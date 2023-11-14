@@ -34,6 +34,9 @@ func RunWsAndServer(rpcPort, wsPort, prometheusPort int) error {
 		", OpenIM version: ",
 		config.Version,
 	)
+	go func() {
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
+	}()
 	longServer, err := NewWsServer(
 		WithPort(wsPort),
 		WithMaxConnNum(int64(config.Config.LongConnSvr.WebsocketMaxConnNum)),
@@ -48,9 +51,6 @@ func RunWsAndServer(rpcPort, wsPort, prometheusPort int) error {
 		if err != nil {
 			panic(utils.Wrap1(err))
 		}
-	}()
-	go func() {
-		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
 	return hubServer.LongConnServer.Run()
 }
