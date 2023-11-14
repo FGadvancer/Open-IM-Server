@@ -16,12 +16,14 @@ package msggateway
 
 import (
 	"fmt"
-	"github.com/OpenIMSDK/tools/utils"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"time"
+
+	"github.com/OpenIMSDK/tools/utils"
+
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 )
 
 // RunWsAndServer run ws server.
