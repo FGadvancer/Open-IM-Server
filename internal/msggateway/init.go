@@ -16,11 +16,12 @@ package msggateway
 
 import (
 	"fmt"
-	"time"
-
 	"github.com/OpenIMSDK/tools/utils"
-
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"time"
 )
 
 // RunWsAndServer run ws server.
@@ -47,6 +48,9 @@ func RunWsAndServer(rpcPort, wsPort, prometheusPort int) error {
 		if err != nil {
 			panic(utils.Wrap1(err))
 		}
+	}()
+	go func() {
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
 	return hubServer.LongConnServer.Run()
 }
