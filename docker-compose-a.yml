@@ -112,7 +112,7 @@ services:
     image: minio/minio
     ports:
       - "${MINIO_PORT}:9000"
-      - "19090:9090"
+      - "29090:9090"
     container_name: minio-a
     volumes:
       - "${DATA_DIR}/components/mnt/data:/data"
