@@ -355,19 +355,19 @@ def "PROMETHEUS_URL" "${GRAFANA_ADDRESS}:${GRAFANA_PORT}"
 # Api 服务的 Prometheus 端口
 readonly API_PROM_PORT=${API_PROM_PORT:-'30100'}
 # User 服务的 Prometheus 端口
-readonly USER_PROM_PORT=${USER_PROM_PORT:-'30110'}
+readonly USER_PROM_PORT=${USER_PROM_PORT:-'40110'}
 # Friend 服务的 Prometheus 端口
-readonly FRIEND_PROM_PORT=${FRIEND_PROM_PORT:-'30120'}
+readonly FRIEND_PROM_PORT=${FRIEND_PROM_PORT:-'40120'}
 # Message 服务的 Prometheus 端口
-readonly MESSAGE_PROM_PORT=${MESSAGE_PROM_PORT:-'30130'}
+readonly MESSAGE_PROM_PORT=${MESSAGE_PROM_PORT:-'40130'}
 # Message Gateway 服务的 Prometheus 端口
-readonly MSG_GATEWAY_PROM_PORT=${MSG_GATEWAY_PROM_PORT:-'30140'}
+readonly MSG_GATEWAY_PROM_PORT=${MSG_GATEWAY_PROM_PORT:-'40140'}
 # Group 服务的 Prometheus 端口
-readonly GROUP_PROM_PORT=${GROUP_PROM_PORT:-'30150'}
+readonly GROUP_PROM_PORT=${GROUP_PROM_PORT:-'40150'}
 # Auth 服务的 Prometheus 端口
-readonly AUTH_PROM_PORT=${AUTH_PROM_PORT:-'30160'}
+readonly AUTH_PROM_PORT=${AUTH_PROM_PORT:-'40160'}
 # Push 服务的 Prometheus 端口
-readonly PUSH_PROM_PORT=${PUSH_PROM_PORT:-'30170'}
+readonly PUSH_PROM_PORT=${PUSH_PROM_PORT:-'40170'}
 # Conversation 服务的 Prometheus 端口
 readonly CONVERSATION_PROM_PORT=${CONVERSATION_PROM_PORT:-'30230'}
 # RTC 服务的 Prometheus 端口
