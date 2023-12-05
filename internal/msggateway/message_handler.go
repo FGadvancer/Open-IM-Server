@@ -16,6 +16,7 @@ package msggateway
 
 import (
 	"context"
+	"github.com/OpenIMSDK/protocol/msg"
 	"github.com/OpenIMSDK/tools/log"
 	"sync"
 
@@ -137,23 +138,23 @@ func (g GrpcHandler) GetSeq(context context.Context, data *Req) ([]byte, error) 
 
 func (g GrpcHandler) SendMessage(context context.Context, data *Req) ([]byte, error) {
 	log.ZWarn(context, "SendMessage for statistic", nil, "operationID", data.OperationID)
-	//msgData := sdkws.MsgData{}
-	//if err := proto.Unmarshal(data.Data, &msgData); err != nil {
-	//	return nil, err
-	//}
-	//if err := g.validate.Struct(&msgData); err != nil {
-	//	return nil, err
-	//}
-	//req := msg.SendMsgReq{MsgData: &msgData}
-	//resp, err := g.msgRpcClient.SendMsg(context, &req)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//c, err := proto.Marshal(resp)
-	//if err != nil {
-	//	return nil, err
-	//}
-	return nil, nil
+	msgData := sdkws.MsgData{}
+	if err := proto.Unmarshal(data.Data, &msgData); err != nil {
+		return nil, err
+	}
+	if err := g.validate.Struct(&msgData); err != nil {
+		return nil, err
+	}
+	req := msg.SendMsgReq{MsgData: &msgData}
+	resp, err := g.msgRpcClient.SendMsg(context, &req)
+	if err != nil {
+		return nil, err
+	}
+	c, err := proto.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 func (g GrpcHandler) SendSignalMessage(context context.Context, data *Req) ([]byte, error) {
