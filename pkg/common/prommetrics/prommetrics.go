@@ -22,7 +22,7 @@ func NewGrpcPromObj(cusMetrics []prometheus.Collector) (*prometheus.Registry, *g
 func GetGrpcCusMetrics(registerName string) []prometheus.Collector {
 	switch registerName {
 	case config2.Config.RpcRegisterName.OpenImMessageGatewayName:
-		return []prometheus.Collector{OnlineUserGauge}
+		return []prometheus.Collector{OnlineUserGauge, GateWaySendMsgTotalCounter}
 	case config2.Config.RpcRegisterName.OpenImMsgName:
 		return []prometheus.Collector{SingleChatMsgProcessSuccessCounter, SingleChatMsgProcessFailedCounter, GroupChatMsgProcessSuccessCounter, GroupChatMsgProcessFailedCounter}
 	case "Transfer":
