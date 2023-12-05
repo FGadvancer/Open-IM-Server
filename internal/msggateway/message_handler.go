@@ -16,8 +16,9 @@ package msggateway
 
 import (
 	"context"
-	"github.com/OpenIMSDK/tools/log"
 	"sync"
+
+	"github.com/OpenIMSDK/tools/log"
 
 	"github.com/OpenIMSDK/protocol/push"
 	"github.com/OpenIMSDK/tools/discoveryregistry"
