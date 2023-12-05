@@ -16,6 +16,7 @@ package msggateway
 
 import (
 	"context"
+	"github.com/OpenIMSDK/tools/log"
 	"sync"
 
 	"github.com/OpenIMSDK/protocol/push"
@@ -135,6 +136,7 @@ func (g GrpcHandler) GetSeq(context context.Context, data *Req) ([]byte, error) 
 }
 
 func (g GrpcHandler) SendMessage(context context.Context, data *Req) ([]byte, error) {
+	log.ZWarn(context, "SendMessage for statistic", nil, "operationID", data.OperationID)
 	//msgData := sdkws.MsgData{}
 	//if err := proto.Unmarshal(data.Data, &msgData); err != nil {
 	//	return nil, err
