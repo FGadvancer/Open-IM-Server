@@ -17,7 +17,9 @@ package msggateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -378,6 +380,12 @@ func (ws *WsServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 	if ws.onlineUserConnNum.Load() >= ws.wsMaxConnNum {
 		httpError(connContext, errs.ErrConnOverMaxNumLimit)
 		return
+	}
+	maxProcs := runtime.GOMAXPROCS(0)
+	if maxProcs == runtime.NumCPU() {
+		fmt.Println("进程没有受到 CPU 核心限制", maxProcs, runtime.NumCPU())
+	} else {
+		fmt.Println("进程受到 CPU 核心限制", maxProcs, runtime.NumCPU())
 	}
 	var (
 		token         string
