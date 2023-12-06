@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -380,14 +379,14 @@ func (ws *WsServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		httpError(connContext, errs.ErrConnOverMaxNumLimit)
 		return
 	}
-	maxProcs := runtime.GOMAXPROCS(0)
-	if maxProcs == runtime.NumCPU() {
-		log.ZWarn(connContext, "进程没有受到 CPU 核心限制", nil,
-			"maxProcs", maxProcs, "sysProcs", runtime.NumCPU())
-	} else {
-		log.ZWarn(connContext, "进程受到 CPU 核心限制", nil,
-			"maxProcs", maxProcs, "sysProcs", runtime.NumCPU())
-	}
+	//maxProcs := runtime.GOMAXPROCS(0)
+	//if maxProcs == runtime.NumCPU() {
+	//	log.ZWarn(connContext, "进程没有受到 CPU 核心限制", nil,
+	//		"maxProcs", maxProcs, "sysProcs", runtime.NumCPU())
+	//} else {
+	//	log.ZWarn(connContext, "进程受到 CPU 核心限制", nil,
+	//		"maxProcs", maxProcs, "sysProcs", runtime.NumCPU())
+	//}
 	var (
 		token         string
 		userID        string
