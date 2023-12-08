@@ -149,16 +149,16 @@ func (m *msgServer) sendMsgSingleChat(ctx context.Context, req *pbmsg.SendMsgReq
 	isSend := true
 	isNotification := msgprocessor.IsNotificationByMsg(req.MsgData)
 	if !isNotification {
-		isSend, err = m.modifyMessageByUserMessageReceiveOpt(
-			ctx,
-			req.MsgData.RecvID,
-			utils.GenConversationIDForSingle(req.MsgData.SendID, req.MsgData.RecvID),
-			constant.SingleChatType,
-			req,
-		)
-		if err != nil {
-			return nil, err
-		}
+		//isSend, err = m.modifyMessageByUserMessageReceiveOpt(
+		//	ctx,
+		//	req.MsgData.RecvID,
+		//	utils.GenConversationIDForSingle(req.MsgData.SendID, req.MsgData.RecvID),
+		//	constant.SingleChatType,
+		//	req,
+		//)
+		//if err != nil {
+		//	return nil, err
+		//}
 	}
 	if !isSend {
 		prommetrics.SingleChatMsgProcessFailedCounter.Inc()
