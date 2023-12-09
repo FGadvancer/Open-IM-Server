@@ -95,9 +95,6 @@ func Start(
 		return utils.Wrap1(err)
 	}
 	go func() {
-		log.Println(http.ListenAndServe("0.0.0.0:6061", nil))
-	}()
-	go func() {
 		if config.Config.Prometheus.Enable && prometheusPort != 0 {
 			metric.InitializeMetrics(srv)
 			// Create a HTTP server for prometheus.
