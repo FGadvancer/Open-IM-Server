@@ -18,7 +18,6 @@ import (
 	"context"
 	"sync"
 
-
 	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
 
 	"github.com/OpenIMSDK/protocol/push"
