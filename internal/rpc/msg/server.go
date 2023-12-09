@@ -17,6 +17,7 @@ package msg
 import (
 	"context"
 	"log"
+	"net/http"
 	_ "net/http/pprof"
 
 	"google.golang.org/grpc"
@@ -91,8 +92,7 @@ func Start(client discoveryregistry.SvcDiscoveryRegistry, server *grpc.Server) e
 		RegisterCenter:         client,
 		GroupLocalCache:        localcache.NewGroupLocalCache(&groupRpcClient),
 		ConversationLocalCache: localcache.NewConversationLocalCache(&conversationClient),
-		friend:             
-		    &friendRpcClient,
+		friend:                 &friendRpcClient,
 	}
 	go func() {
 		log.Println(http.ListenAndServe("0.0.0.0:6061", nil))
