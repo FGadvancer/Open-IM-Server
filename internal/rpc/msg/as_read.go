@@ -16,9 +16,11 @@ package msg
 
 import (
 	"context"
+	utils2 "github.com/OpenIMSDK/tools/utils"
 
 	"github.com/redis/go-redis/v9"
 
+	cbapi "github.com/openimsdk/open-im-server/v3/pkg/callbackstruct"
 	"github.com/OpenIMSDK/protocol/constant"
 	"github.com/OpenIMSDK/protocol/msg"
 	"github.com/OpenIMSDK/protocol/sdkws"
@@ -110,6 +112,7 @@ func (m *msgServer) MarkMsgsAsRead(
 	if err = m.MsgDatabase.MarkSingleChatMsgsAsRead(ctx, req.UserID, req.ConversationID, req.Seqs); err != nil {
 		return
 	}
+
 	currentHasReadSeq, err := m.MsgDatabase.GetHasReadSeq(ctx, req.UserID, req.ConversationID)
 	if err != nil && errs.Unwrap(err) != redis.Nil {
 		return
@@ -147,7 +150,12 @@ func (m *msgServer) MarkConversationAsRead(
 		for i := hasReadSeq + 1; i <= req.HasReadSeq; i++ {
 			seqs = append(seqs, i)
 		}
-
+		//avoid client missed call MarkConversationMessageAsRead by order
+		for _, val := range req.Seqs {
+			if !utils2.Contain(val, seqs...) {
+				seqs = append(seqs, val)
+			}
+		}
 		if len(seqs) > 0 {
 			log.ZDebug(ctx, "MarkConversationAsRead", "seqs", seqs, "conversationID", req.ConversationID)
 			if err = m.MsgDatabase.MarkSingleChatMsgsAsRead(ctx, req.UserID, req.ConversationID, seqs); err != nil {
@@ -165,6 +173,7 @@ func (m *msgServer) MarkConversationAsRead(
 			m.conversationAndGetRecvID(conversation, req.UserID), seqs, hasReadSeq); err != nil {
 			return nil, err
 		}
+		
 	} else if conversation.ConversationType == constant.SuperGroupChatType ||
 		conversation.ConversationType == constant.NotificationChatType {
 		if req.HasReadSeq > hasReadSeq {
@@ -179,6 +188,16 @@ func (m *msgServer) MarkConversationAsRead(
 			return nil, err
 		}
 
+	}
+
+	reqCall := &cbapi.CallbackGroupMsgReadReq{
+		SendID:       conversation.OwnerUserID,
+		ReceiveID:    req.UserID,
+		UnreadMsgNum: req.HasReadSeq,
+		ContentType:  int64(conversation.ConversationType),
+	}
+	if err := CallbackGroupMsgRead(ctx, reqCall); err != nil {
+		return nil, err
 	}
 
 	return &msg.MarkConversationAsReadResp{}, nil

@@ -95,8 +95,6 @@ generate_ip() {
 LAST_OCTET=$((LAST_OCTET + 1))
 DOCKER_BRIDGE_GATEWAY=$(generate_ip)
 LAST_OCTET=$((LAST_OCTET + 1))
-MYSQL_NETWORK_ADDRESS=$(generate_ip)
-LAST_OCTET=$((LAST_OCTET + 1))
 MONGO_NETWORK_ADDRESS=$(generate_ip)
 LAST_OCTET=$((LAST_OCTET + 1))
 REDIS_NETWORK_ADDRESS=$(generate_ip)
@@ -120,6 +118,8 @@ LAST_OCTET=$((LAST_OCTET + 1))
 NODE_EXPORTER_NETWORK_ADDRESS=$(generate_ip)
 LAST_OCTET=$((LAST_OCTET + 1))
 OPENIM_ADMIN_FRONT_NETWORK_ADDRESS=$(generate_ip)
+LAST_OCTET=$((LAST_OCTET + 1))
+ALERT_MANAGER_NETWORK_ADDRESS=$(generate_ip)
 ###################### openim 配置 ######################
 # read: https://github.com/openimsdk/open-im-server/blob/main/deployment/README.md
 def "OPENIM_DATA_DIR" "/data/openim"
@@ -166,19 +166,6 @@ def "ZOOKEEPER_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # Zookeeper的地址
 def "ZOOKEEPER_USERNAME" ""                        # Zookeeper的用户名
 def "ZOOKEEPER_PASSWORD" ""                        # Zookeeper的密码
 
-###################### MySQL 配置信息 ######################
-def "MYSQL_PORT" "13306"                       # MySQL的端口
-def "MYSQL_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # MySQL的地址
-def "MYSQL_USERNAME" "${OPENIM_USER}"                 # MySQL的用户名
-# MySQL的密码
-readonly MYSQL_PASSWORD=${MYSQL_PASSWORD:-"${PASSWORD}"}
-def "MYSQL_DATABASE" "${DATABASE_NAME}"        # MySQL的数据库名
-def "MYSQL_MAX_OPEN_CONN" "1000"               # 最大打开的连接数
-def "MYSQL_MAX_IDLE_CONN" "100"                # 最大空闲连接数
-def "MYSQL_MAX_LIFETIME" "60"                  # 连接可以重用的最大生命周期（秒）
-def "MYSQL_LOG_LEVEL" "4"                      # 日志级别
-def "MYSQL_SLOW_THRESHOLD" "500"               # 慢查询阈值（毫秒）
-
 ###################### MongoDB 配置信息 ######################
 def "MONGO_URI"                                # MongoDB的URI
 def "MONGO_PORT" "37017"                       # MongoDB的端口
@@ -221,6 +208,15 @@ def "OSS_ACCESS_KEY_SECRET"                                             # 阿里
 def "OSS_SESSION_TOKEN"                                                 # 阿里云OSS的会话令牌
 def "OSS_PUBLIC_READ" "false"                                           # 公有读
 
+#七牛云配置信息
+def "KODO_ENDPOINT" "http://s3.cn-east-1.qiniucs.com"                    # 七牛云OSS的端点URL
+def "KODO_BUCKET" "demo-9999999"                                         # 七牛云OSS的存储桶名称
+def "KODO_BUCKET_URL" "http://your.domain.com"                           # 七牛云OSS的存储桶URL
+def "KODO_ACCESS_KEY_ID"                                                 # 七牛云OSS的访问密钥ID
+def "KODO_ACCESS_KEY_SECRET"                                             # 七牛云OSS的密钥
+def "KODO_SESSION_TOKEN"                                                 # 七牛云OSS的会话令牌
+def "KODO_PUBLIC_READ" "false"                                           # 公有读
+
 ###################### Redis 配置信息 ######################
 def "REDIS_PORT" "16379"                                    # Redis的端口
 def "REDIS_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}"              # Redis的地址
@@ -259,8 +255,35 @@ def "PROMETHEUS_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # Prometheus的地址
 ###################### node-exporter 配置 ######################
 def "NODE_EXPORTER_PORT" "19100"                       # node-exporter的端口
 def "NODE_EXPORTER_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # node-exporter的地址
+
+###################### alertmanagerS 配置 ######################
+def "ALERT_MANAGER_PORT" "19093"                       # node-exporter的端口
+def "ALERT_MANAGER_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # node-exporter的地址
+
+###################### AlertManager Configuration Script ######################
+# 解析超时
+readonly ALERTMANAGER_RESOLVE_TIMEOUT=${ALERTMANAGER_RESOLVE_TIMEOUT:-'5m'}
+# 发件人邮箱
+readonly ALERTMANAGER_SMTP_FROM=${ALERTMANAGER_SMTP_FROM:-'alert@openim.io'}
+# SMTP服务器地址和端口
+readonly ALERTMANAGER_SMTP_SMARTHOST=${ALERTMANAGER_SMTP_SMARTHOST:-'smtp.163.com:465'}
+# SMTP认证用户名
+readonly ALERTMANAGER_SMTP_AUTH_USERNAME=${SMTP_USERNAME:-"alert@openim.io"}
+# SMTP认证密码
+readonly ALERTMANAGER_SMTP_AUTH_PASSWORD=${SMTP_PASSWORD:-"YOURAUTHPASSWORD"}
+# SMTP是否需要TLS
+readonly ALERTMANAGER_SMTP_REQUIRE_TLS=${ALERTMANAGER_SMTP_REQUIRE_TLS:-"false"}
+# SMTP HELO/EHLO标识符
+readonly ALERTMANAGER_SMTP_HELLO=${ALERTMANAGER_SMTP_HELLO:-"xxx监控告警"}
+# 邮箱接收人
+readonly ALERTMANAGER_EMAIL_TO=${ALERTMANAGER_EMAIL_TO:-"alert@example.com"}
+# 邮箱主题
+readonly ALERTMANAGER_EMAIL_SUBJECT=${ALERTMANAGER_EMAIL_SUBJECT:-"{EMAIL_SUBJECT:-'[Alert] Notification'}"}
+# 是否发送已解决的告警
+readonly ALERTMANAGER_SEND_RESOLVED=${ALERTMANAGER_SEND_RESOLVED:-"{SEND_RESOLVED:-'true'}"}
+
 ###################### Grafana 配置信息 ######################
-def "GRAFANA_PORT" "3000"                        # Grafana的端口
+def "GRAFANA_PORT" "13000"                        # Grafana的端口
 def "GRAFANA_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # Grafana的地址
 
 ###################### RPC Port Configuration Variables ######################
@@ -347,7 +370,10 @@ def "FRIEND_VERIFY" "false"     # 朋友验证
 def "IOS_PUSH_SOUND" "xxx"      # IOS推送声音
 def "IOS_BADGE_COUNT" "true"    # IOS徽章计数
 def "IOS_PRODUCTION" "false"    # IOS生产
-
+# callback 配置
+def "CALLBACK_ENABLE" "false"          # 是否开启 Callback
+def "CALLBACK_TIMEOUT" "5"            # 最长超时时间
+def "CALLBACK_FAILED_CONTINUE" "true" # 失败后是否继续
 ###################### Prometheus 配置信息 ######################
 # 是否启用 Prometheus
 readonly PROMETHEUS_ENABLE=${PROMETHEUS_ENABLE:-'false'}

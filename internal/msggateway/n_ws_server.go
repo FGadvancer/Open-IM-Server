@@ -18,9 +18,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -46,7 +49,7 @@ type LongConnServer interface {
 	wsHandler(w http.ResponseWriter, r *http.Request)
 	GetUserAllCons(userID string) ([]*Client, bool)
 	GetUserPlatformCons(userID string, platform int) ([]*Client, bool, bool)
-	Validate(s interface{}) error
+	Validate(s any) error
 	SetCacheHandler(cache cache.MsgModel)
 	SetDiscoveryRegistry(client discoveryregistry.SvcDiscoveryRegistry)
 	KickUserConn(client *Client) error
@@ -55,6 +58,12 @@ type LongConnServer interface {
 	Compressor
 	Encoder
 	MessageHandler
+}
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 1024)
+	},
 }
 
 type WsServer struct {
@@ -68,6 +77,7 @@ type WsServer struct {
 	onlineUserNum     atomic.Int64
 	onlineUserConnNum atomic.Int64
 	handshakeTimeout  time.Duration
+	writeBufferSize   int
 	validate          *validator.Validate
 	cache             cache.MsgModel
 	userClient        *rpcclient.UserRpcClient
@@ -116,7 +126,8 @@ func (ws *WsServer) UnRegister(c *Client) {
 	ws.unregisterChan <- c
 }
 
-func (ws *WsServer) Validate(s interface{}) error {
+func (ws *WsServer) Validate(s any) error {
+	//?question?
 	return nil
 }
 
@@ -137,9 +148,10 @@ func NewWsServer(opts ...Option) (*WsServer, error) {
 	return &WsServer{
 		port:             config.port,
 		wsMaxConnNum:     config.maxConnNum,
+		writeBufferSize:  config.writeBufferSize,
 		handshakeTimeout: config.handshakeTimeout,
 		clientPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(Client)
 			},
 		},
@@ -154,10 +166,22 @@ func NewWsServer(opts ...Option) (*WsServer, error) {
 }
 
 func (ws *WsServer) Run() error {
-	var client *Client
-	go func() {
+	var (
+		client *Client
+		wg     errgroup.Group
+
+		sigs = make(chan os.Signal, 1)
+		done = make(chan struct{}, 1)
+	)
+
+	server := http.Server{Addr: ":" + utils.IntToString(ws.port), Handler: nil}
+
+	wg.Go(func() error {
 		for {
 			select {
+			case <-done:
+				return nil
+
 			case client = <-ws.registerChan:
 				ws.registerClient(client)
 			case client = <-ws.unregisterChan:
@@ -166,10 +190,34 @@ func (ws *WsServer) Run() error {
 				ws.multiTerminalLoginChecker(onlineInfo.clientOK, onlineInfo.oldClients, onlineInfo.newClient)
 			}
 		}
+	})
+
+	wg.Go(func() error {
+		http.HandleFunc("/", ws.wsHandler)
+		return server.ListenAndServe()
+	})
+
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	<-sigs
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		// graceful exit operation for server
+		_ = server.Shutdown(ctx)
+		_ = wg.Wait()
+		close(done)
 	}()
-	http.HandleFunc("/", ws.wsHandler)
-	// http.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {})
-	return http.ListenAndServe(":"+utils.IntToString(ws.port), nil) // Start listening
+
+	select {
+	case <-done:
+		return nil
+
+	case <-time.After(15 * time.Second):
+		return utils.Wrap1(errors.New("timeout exit"))
+	}
+
 }
 
 var concurrentRequest = 3
@@ -438,7 +486,8 @@ func (ws *WsServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 		httpError(connContext, errs.ErrTokenNotExist.Wrap())
 		return
 	}
-	wsLongConn := newGWebSocket(WebSocket, ws.handshakeTimeout)
+
+	wsLongConn := newGWebSocket(WebSocket, ws.handshakeTimeout, ws.writeBufferSize)
 	err = wsLongConn.GenerateLongConn(w, r)
 	if err != nil {
 		httpError(connContext, err)

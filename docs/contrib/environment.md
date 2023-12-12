@@ -37,6 +37,7 @@
 	* 2.20. [Prometheus Configuration](#PrometheusConfiguration-1)
 		* 2.20.1. [General Configuration](#GeneralConfiguration)
 		* 2.20.2. [Service-Specific Prometheus Ports](#Service-SpecificPrometheusPorts)
+	* 2.21. [Qiniu Cloud Kodo Configuration](#QiniuCloudKODOConfiguration)
 
 ## 0. <a name='TableofContents'></a>OpenIM Config File
 
@@ -150,7 +151,7 @@ For convenience, configuration through modifying environment variables is recomm
   + **Description**: API address.
   + **Note**: If the server has an external IP, it will be automatically obtained. For internal networks, set this variable to the IP serving internally.
 
-  ```
+  ```bash
   export API_URL="http://ip:10002"
   ```
 
@@ -295,19 +296,6 @@ Feel free to explore the MinIO documentation for more advanced configurations an
 | `ZOOKEEPER_USERNAME` | `""`                     | Username for Zookeeper. |
 | `ZOOKEEPER_PASSWORD` | `""`                     | Password for Zookeeper. |
 
-###  2.6. <a name='MySQLConfiguration'></a>MySQL Configuration
-
-**Description**: Configuration for MySQL, including port, address, and credentials.
-
-| Parameter        | Example Value            | Description         |
-| ---------------- | ------------------------ | ------------------- |
-| `MYSQL_PORT`     | `"13306"`                | Port for MySQL.     |
-| `MYSQL_ADDRESS`  | Docker Bridge Gateway IP | Address for MySQL.  |
-| `MYSQL_USERNAME` | User-defined             | Username for MySQL. |
-| `MYSQL_PASSWORD` | User-defined             | Password for MySQL. |
-
-Note: The configurations for other services (e.g., MONGO, REDIS, KAFKA, etc.) follow a similar pattern to MySQL and can be documented in a similar manner.
-
 ###  2.7. <a name='MongoDBConfiguration'></a>MongoDB Configuration
 
 This section involves setting up MongoDB, including its port, address, and credentials.
@@ -412,7 +400,7 @@ Configuration for Grafana, including its port and address.
 
 | Parameter       | Example Value              | Description           |
 | --------------- | -------------------------- | --------------------- |
-| GRAFANA_PORT    | "3000"                     | Port used by Grafana. |
+| GRAFANA_PORT    | "13000"                     | Port used by Grafana. |
 | GRAFANA_ADDRESS | "${DOCKER_BRIDGE_GATEWAY}" | Address for Grafana.  |
 
 ###  2.16. <a name='RPCPortConfigurationVariables'></a>RPC Port Configuration Variables
@@ -466,7 +454,7 @@ This section involves configuring the log settings, including storage location, 
 This section involves setting up additional configuration variables for Websocket, Push Notifications, and Chat.
 
 | Parameter               | Example Value     | Description                        |
-| ----------------------- | ----------------- | ---------------------------------- |
+|-------------------------|-------------------|------------------------------------|
 | WEBSOCKET_MAX_CONN_NUM  | "100000"          | Maximum Websocket connections      |
 | WEBSOCKET_MAX_MSG_LEN   | "4096"            | Maximum Websocket message length   |
 | WEBSOCKET_TIMEOUT       | "10"              | Websocket timeout                  |
@@ -500,9 +488,9 @@ This section involves setting up additional configuration variables for Websocke
 | TOKEN_EXPIRE            | "90"              | Token Expiry Time                  |
 | FRIEND_VERIFY           | "false"           | Friend Verification Enable         |
 | IOS_PUSH_SOUND          | "xxx"             | iOS                                |
-
-
-
+| CALLBACK_ENABLE         | "false"            | Enable callback                    | 
+| CALLBACK_TIMEOUT        | "5"               | Maximum timeout for callback call  |
+| CALLBACK_FAILED_CONTINUE| "true"            | fails to continue to the next step |
 ###  2.20. <a name='PrometheusConfiguration-1'></a>Prometheus Configuration
 
 This section involves configuring Prometheus, including enabling/disabling it and setting up ports for various services.
@@ -528,3 +516,18 @@ This section involves configuring Prometheus, including enabling/disabling it an
 | RTC Service              | `RTC_PROM_PORT`          | '21300'                      | Prometheus port for the RTC service.               |
 | Third Service            | `THIRD_PROM_PORT`        | '21301'                      | Prometheus port for the Third service.             |
 | Message Transfer Service | `MSG_TRANSFER_PROM_PORT` | '21400, 21401, 21402, 21403' | Prometheus ports for the Message Transfer service. |
+
+
+###  2.21. <a name='QiniuCloudKODOConfiguration'></a>Qiniu Cloud Kodo Configuration
+
+This section involves setting up Qiniu Cloud Kodo, including its endpoint, bucket name, and credentials.
+
+| Parameter             | Example Value                                                | Description                              |
+| --------------------- | ------------------------------------------------------------ | ---------------------------------------- |
+| KODO_ENDPOINT          | "[http://s3.cn-east-1.qiniucs.com](http://s3.cn-east-1.qiniucs.com)" | Endpoint URL for Qiniu Cloud Kodo.      |
+| KODO_BUCKET            | "demo-9999999"                                               | Bucket name for Qiniu Cloud Kodo.       |
+| KODO_BUCKET_URL        | "[http://your.domain.com](http://your.domain.com)" | Bucket URL for Qiniu Cloud Kodo.        |
+| KODO_ACCESS_KEY_ID     | [User Defined]                                               | Access key ID for Qiniu Cloud Kodo.     |
+| KODO_ACCESS_KEY_SECRET | [User Defined]                                               | Access key secret for Qiniu Cloud Kodo. |
+| KODO_SESSION_TOKEN     | [User Defined]                                               | Session token for Qiniu Cloud Kodo.     |
+| KODO_PUBLIC_READ       | "false"                                                      | Public read access.                      |
