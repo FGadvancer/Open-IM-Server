@@ -16,8 +16,9 @@ package msggateway
 
 import (
 	"context"
-	"github.com/OpenIMSDK/protocol/msg"
 	"sync"
+
+	"github.com/OpenIMSDK/protocol/msg"
 
 	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
 
