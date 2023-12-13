@@ -299,6 +299,9 @@ func (p *Pusher) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.MsgData, 
 		maxWorkers = 3
 	}
 
+	wg.SetLimit(maxWorkers)
+
+	// Online push message
 	for _, conn := range conns {
 		conn := conn // loop var safe
 		wg.Go(func() error {
@@ -318,6 +321,8 @@ func (p *Pusher) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.MsgData, 
 			return nil
 		})
 	}
+
+	_ = wg.Wait()
 
 	// always return nil
 	return wsResults, nil
