@@ -16,13 +16,9 @@
 
 make stop
 if [ $? -eq 0 ]; then
-    docker-compose -f docker-compose-a.yml down
-    wait $!
-
-    if [ $? -eq 0 ]; then
-        rm -rf components/kafka/ components/redis/ components/mongodb/
-        rm logs/*
-        docker-compose -f docker-compose-a.yml up -d
-        make start
-    fi
+    docker-compose -f docker-compose-a.yml down && \
+    rm -rf components/kafka/ components/redis/ components/mongodb/ && \
+    rm logs/* && \
+    docker-compose -f docker-compose-a.yml up -d && \
+    make start
 fi
