@@ -16,8 +16,8 @@
 
 make stop
 
-docker-compose -f docker-compose-a.yaml down
+docker-compose -f docker-compose-a.yml down
 rm -rf components/kafka/ components/redis/  components/mongodb/
 rm logs/*
-docker-compose -f docker-compose-a.yaml up -d
+docker-compose -f docker-compose-a.yml up -d
 make start
