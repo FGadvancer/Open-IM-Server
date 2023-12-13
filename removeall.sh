@@ -23,4 +23,13 @@ if [ $? -eq 0 ]; then
     rm ./logs/* && \
     docker-compose -f docker-compose-a.yml up -d && \
     make start
+
+    nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30171 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40170
+ >> openIM.log 2>&1 &
+     nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30172 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40170
+  >> openIM.log 2>&1 &
+       nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30173 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40170
+    >> openIM.log 2>&1 &
+           nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30174 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40170
+        >> openIM.log 2>&1 &
 fi
