@@ -17,9 +17,9 @@
 make stop
 
 docker-compose -f docker-compose-a.yml down
+wait $!
 
-sleep 3
-rm -rf components/kafka/ components/redis/  components/mongodb/
+rm -rf components/kafka/ components/redis/ components/mongodb/
 rm logs/*
 docker-compose -f docker-compose-a.yml up -d
 make start
