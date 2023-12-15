@@ -31,8 +31,8 @@ if [ $? -eq 0 ]; then
               nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30175 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40175 >> openIM.log 2>&1 &
                nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30176 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40176 >> openIM.log 2>&1 &
                  nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30177 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40177 >> openIM.log 2>&1 &
-#          nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30131 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40131 >> openIM.log 2>&1 &
-#        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30132 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40132 >> openIM.log 2>&1 &
-#        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30133 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40133 >> openIM.log 2>&1 &
-#        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30134 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40134 >> openIM.log 2>&1 &
+          nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30131 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40131 >> openIM.log 2>&1 &
+        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30132 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40132 >> openIM.log 2>&1 &
+        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30133 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40133 >> openIM.log 2>&1 &
+        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30134 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40134 >> openIM.log 2>&1 &
 fi
