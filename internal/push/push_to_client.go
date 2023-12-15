@@ -18,8 +18,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"golang.org/x/sync/errgroup"
 	"sync"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/OpenIMSDK/protocol/constant"
 	"github.com/OpenIMSDK/protocol/conversation"
