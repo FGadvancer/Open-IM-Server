@@ -27,7 +27,7 @@ if [ $? -eq 0 ]; then
     nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30171 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40171 >> openIM.log 2>&1 &
      nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30172 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40172 >> openIM.log 2>&1 &
        nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30173 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40173 >> openIM.log 2>&1 &
-           nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30174 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40174 >> openIM.log 2>&1 &
+          nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-push --port 30174 -c /data/gordon/fork/Open-IM-Server/config/ --prometheus_port 40174 >> openIM.log 2>&1 &
           nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30131 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40131 >> openIM.log 2>&1 &
         nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30132 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40132 >> openIM.log 2>&1 &
         nohup /data/gordon/fork/Open-IM-Server/_output/bin/platforms/linux/amd64/openim-rpc-msg --port 30133 -c /data/gordon/fork/Open-IM-Server/config --prometheus_port 40133 >> openIM.log 2>&1 &
