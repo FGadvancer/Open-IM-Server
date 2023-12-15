@@ -58,23 +58,23 @@ func (m *msgServer) messageVerification(ctx context.Context, data *msg.SendMsgRe
 			data.MsgData.ContentType >= constant.NotificationBegin {
 			return nil
 		}
-		//black, err := m.friend.IsBlocked(ctx, data.MsgData.SendID, data.MsgData.RecvID)
-		//if err != nil {
-		//	return err
-		//}
-		//if black {
-		//	return errs.ErrBlockedByPeer.Wrap()
-		//}
-		//if *config.Config.MessageVerify.FriendVerify {
-		//	friend, err := m.friend.IsFriend(ctx, data.MsgData.SendID, data.MsgData.RecvID)
-		//	if err != nil {
-		//		return err
-		//	}
-		//	if !friend {
-		//		return errs.ErrNotPeersFriend.Wrap()
-		//	}
-		//	return nil
-		//}
+		black, err := m.friend.IsBlocked(ctx, data.MsgData.SendID, data.MsgData.RecvID)
+		if err != nil {
+			return err
+		}
+		if black {
+			return errs.ErrBlockedByPeer.Wrap()
+		}
+		if *config.Config.MessageVerify.FriendVerify {
+			friend, err := m.friend.IsFriend(ctx, data.MsgData.SendID, data.MsgData.RecvID)
+			if err != nil {
+				return err
+			}
+			if !friend {
+				return errs.ErrNotPeersFriend.Wrap()
+			}
+			return nil
+		}
 		return nil
 	case constant.SuperGroupChatType:
 		groupInfo, err := m.Group.GetGroupInfoCache(ctx, data.MsgData.GroupID)
