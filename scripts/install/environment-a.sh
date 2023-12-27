@@ -168,7 +168,7 @@ def "ZOOKEEPER_PASSWORD" ""                        # Zookeeper的密码
 
 ###################### MongoDB 配置信息 ######################
 def "MONGO_URI"                                # MongoDB的URI
-def "MONGO_PORT" "27017"                       # MongoDB的端口
+def "MONGO_PORT" "47017"                       # MongoDB的端口
 def "MONGO_ADDRESS" "${DOCKER_BRIDGE_GATEWAY}" # MongoDB的地址
 def "MONGO_DATABASE" "${DATABASE_NAME}"        # MongoDB的数据库名
 def "MONGO_USERNAME" "${OPENIM_USER}"                 # MongoDB的用户名
