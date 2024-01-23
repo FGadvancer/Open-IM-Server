@@ -97,7 +97,7 @@ services:
     image: minio/minio:${MINIO_IMAGE_VERSION:-RELEASE.2024-01-11T07-46-16Z}
     ports:
       - "${MINIO_PORT:-10005}:9000"
-      - "9090:9090"
+      - "39090:9090"
     container_name: minio-a
     volumes:
       - "${DATA_DIR:-./}/components/mnt/data:/data"
