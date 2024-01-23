@@ -53,8 +53,8 @@ mongo:
 # Maximum connection pool size
   address: [ ${MONGO_ADDRESS}:${MONGO_PORT} ]
   database: ${MONGO_DATABASE}
-  username: ${MONGO_USERNAME}
-  password: ${MONGO_PASSWORD}
+  username: ${MONGO_OPENIM_USERNAME}
+  password: ${MONGO_OPENIM_PASSWORD}
   maxPoolSize: ${MONGO_MAX_POOL_SIZE}
 
 ###################### Redis configuration information ######################
@@ -315,13 +315,21 @@ iosPush:
 # Timeout in seconds
 # Whether to continue execution if callback fails
 callback:
-  url: ""
+  url: "http://127.0.0.1:10008/callbackExample"
   beforeSendSingleMsg:
     enable: ${CALLBACK_ENABLE}
     timeout: ${CALLBACK_TIMEOUT}
     failedContinue: ${CALLBACK_FAILED_CONTINUE}
+  beforeUpdateUserInfoEx:
+    enable:  ${CALLBACK_ENABLE}
+    timeout: ${CALLBACK_TIMEOUT}
+    failedContinue: ${CALLBACK_FAILED_CONTINUE}
+  afterUpdateUserInfoEx:
+    enable:  ${CALLBACK_ENABLE}
+    timeout: ${CALLBACK_TIMEOUT}
+    failedContinue: ${CALLBACK_FAILED_CONTINUE}
   afterSendSingleMsg:
-    enable: ${CALLBACK_ENABLE}
+    enable: true
     timeout: ${CALLBACK_TIMEOUT}
     failedContinue: ${CALLBACK_FAILED_CONTINUE}
   beforeSendGroupMsg:
@@ -506,7 +514,7 @@ callback:
 # The number of ports needs to be consistent with msg_transfer_service_num in script/path_info.sh
 prometheus:
   enable: ${PROMETHEUS_ENABLE}
-  prometheusUrl: ${PROMETHEUS_URL}
+  grafanaUrl: ${GRAFANA_URL}
   apiPrometheusPort: [${API_PROM_PORT}]
   userPrometheusPort: [ ${USER_PROM_PORT} ]
   friendPrometheusPort: [ ${FRIEND_PROM_PORT} ]

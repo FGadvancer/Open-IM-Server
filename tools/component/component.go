@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -23,10 +24,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/minio/minio-go/v7"
-	"github.com/redis/go-redis/v9"
-	"gopkg.in/yaml.v3"
 
 	"github.com/IBM/sarama"
 	"github.com/OpenIMSDK/tools/errs"
@@ -36,16 +33,20 @@ import (
 
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 
+	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/redis/go-redis/v9"
+	"gopkg.in/yaml.v3"
 )
 
 const (
 	// defaultCfgPath is the default path of the configuration file.
 	defaultCfgPath           = "../../../../../config/config.yaml"
 	minioHealthCheckDuration = 1
-	maxRetry                 = 100
+	maxRetry                 = 300
 	componentStartErrCode    = 6000
 	configErrCode            = 6001
+	mongoConnTimeout         = 30 * time.Second
 )
 
 const (
@@ -55,8 +56,7 @@ const (
 )
 
 var (
-	cfgPath = flag.String("c", defaultCfgPath, "Path to the configuration file")
-
+	cfgPath           = flag.String("c", defaultCfgPath, "Path to the configuration file")
 	ErrComponentStart = errs.NewCodeError(componentStartErrCode, "ComponentStartErr")
 	ErrConfig         = errs.NewCodeError(configErrCode, "Config file is incorrect")
 )
@@ -95,7 +95,7 @@ func main() {
 
 	for i := 0; i < maxRetry; i++ {
 		if i != 0 {
-			time.Sleep(3 * time.Second)
+			time.Sleep(1 * time.Second)
 		}
 		fmt.Printf("Checking components Round %v...\n", i+1)
 
@@ -141,19 +141,25 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-// checkMongo checks the MongoDB connection
+// checkMongo checks the MongoDB connection without retries
 func checkMongo() (string, error) {
-	// Use environment variables or fallback to config
 	uri := getEnv("MONGO_URI", buildMongoURI())
 
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
+	ctx, cancel := context.WithTimeout(context.Background(), mongoConnTimeout)
+	defer cancel()
+
 	str := "ths addr is:" + strings.Join(config.Config.Mongo.Address, ",")
+
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	if err != nil {
 		return "", errs.Wrap(errStr(err, str))
 	}
-	defer client.Disconnect(context.TODO())
+	defer client.Disconnect(context.Background())
 
-	if err = client.Ping(context.TODO(), nil); err != nil {
+	ctx, cancel = context.WithTimeout(context.Background(), mongoConnTimeout)
+	defer cancel()
+
+	if err = client.Ping(ctx, nil); err != nil {
 		return "", errs.Wrap(errStr(err, str))
 	}
 
@@ -171,10 +177,10 @@ func buildMongoURI() string {
 	mongodbHosts := strings.Join(config.Config.Mongo.Address, ",")
 
 	if username != "" && password != "" {
-		return fmt.Sprintf("mongodb://%s:%s@%s/%s?maxPoolSize=%d&authSource=admin",
+		return fmt.Sprintf("mongodb://%s:%s@%s/%s?maxPoolSize=%d",
 			username, password, mongodbHosts, database, maxPoolSize)
 	}
-	return fmt.Sprintf("mongodb://%s/%s?maxPoolSize=%d&authSource=admin",
+	return fmt.Sprintf("mongodb://%s/%s?maxPoolSize=%d",
 		mongodbHosts, database, maxPoolSize)
 }
 
@@ -285,10 +291,23 @@ func checkZookeeper() (string, error) {
 
 	// Connect to Zookeeper
 	str := "the addr is:" + address
-	c, _, err := zk.Connect(zookeeperAddresses, time.Second) // Adjust the timeout as necessary
+	c, eventChan, err := zk.Connect(zookeeperAddresses, time.Second) // Adjust the timeout as necessary
 	if err != nil {
 		return "", errs.Wrap(errStr(err, str))
 	}
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case event := <-eventChan:
+			if event.State == zk.StateConnected {
+				fmt.Println("Connected to Zookeeper")
+				goto Connected
+			}
+		case <-timeout:
+			return "", errs.Wrap(errors.New("timeout waiting for Zookeeper connection"), "Zookeeper Addr: "+strings.Join(config.Config.Zookeeper.ZkAddr, " "))
+		}
+	}
+Connected:
 	defer c.Close()
 
 	// Set authentication if username and password are provided
@@ -296,12 +315,6 @@ func checkZookeeper() (string, error) {
 		if err := c.AddAuth(schema, []byte(username+":"+password)); err != nil {
 			return "", errs.Wrap(errStr(err, str))
 		}
-	}
-
-	// Check if Zookeeper is reachable
-	_, _, err = c.Get("/")
-	if err != nil {
-		return "", errs.Wrap(err, str)
 	}
 
 	return str, nil

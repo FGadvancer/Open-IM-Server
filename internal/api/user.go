@@ -41,7 +41,9 @@ func (u *UserApi) UserRegister(c *gin.Context) {
 func (u *UserApi) UpdateUserInfo(c *gin.Context) {
 	a2r.Call(user.UserClient.UpdateUserInfo, u.Client, c)
 }
-
+func (u *UserApi) UpdateUserInfoEx(c *gin.Context) {
+	a2r.Call(user.UserClient.UpdateUserInfoEx, u.Client, c)
+}
 func (u *UserApi) SetGlobalRecvMessageOpt(c *gin.Context) {
 	a2r.Call(user.UserClient.SetGlobalRecvMessageOpt, u.Client, c)
 }
@@ -217,6 +219,11 @@ func (u *UserApi) ProcessUserCommandUpdate(c *gin.Context) {
 // ProcessUserCommandGet user general function get
 func (u *UserApi) ProcessUserCommandGet(c *gin.Context) {
 	a2r.Call(user.UserClient.ProcessUserCommandGet, u.Client, c)
+}
+
+// ProcessUserCommandGet user general function get all
+func (u *UserApi) ProcessUserCommandGetAll(c *gin.Context) {
+	a2r.Call(user.UserClient.ProcessUserCommandGetAll, u.Client, c)
 }
 
 func (u *UserApi) AddNotificationAccount(c *gin.Context) {

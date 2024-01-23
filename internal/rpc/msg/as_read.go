@@ -18,6 +18,7 @@ import (
 	"context"
 
 	utils2 "github.com/OpenIMSDK/tools/utils"
+	cbapi "github.com/openimsdk/open-im-server/v3/pkg/callbackstruct"
 
 	"github.com/redis/go-redis/v9"
 
@@ -26,8 +27,6 @@ import (
 	"github.com/OpenIMSDK/protocol/sdkws"
 	"github.com/OpenIMSDK/tools/errs"
 	"github.com/OpenIMSDK/tools/log"
-
-	cbapi "github.com/openimsdk/open-im-server/v3/pkg/callbackstruct"
 )
 
 func (m *msgServer) GetConversationsHasReadAndMaxSeq(ctx context.Context, req *msg.GetConversationsHasReadAndMaxSeqReq) (resp *msg.GetConversationsHasReadAndMaxSeqResp, err error) {
@@ -125,6 +124,17 @@ func (m *msgServer) MarkMsgsAsRead(
 			return
 		}
 	}
+
+	req_callback := &cbapi.CallbackSingleMsgReadReq{
+		ConversationID: conversation.ConversationID,
+		UserID:         req.UserID,
+		Seqs:           req.Seqs,
+		ContentType:    conversation.ConversationType,
+	}
+	if err = CallbackSingleMsgRead(ctx, req_callback); err != nil {
+		return nil, err
+	}
+
 	if err = m.sendMarkAsReadNotification(ctx, req.ConversationID, conversation.ConversationType, req.UserID,
 		m.conversationAndGetRecvID(conversation, req.UserID), req.Seqs, hasReadSeq); err != nil {
 		return
