@@ -272,8 +272,8 @@ services:
 
   grafana:
      image: grafana/grafana
-     container_name: grafana
-     hostname: grafana-a
+     container_name: grafana-a
+     hostname: grafana
      user: root
      restart: always
      ports:
