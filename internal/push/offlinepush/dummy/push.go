@@ -16,17 +16,16 @@ package dummy
 
 import (
 	"context"
-
-	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush"
+	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush/options"
 )
 
-func NewClient() *Dummy {
+func NewDummy() *Dummy {
 	return &Dummy{}
 }
 
 type Dummy struct {
 }
 
-func (d *Dummy) Push(ctx context.Context, userIDs []string, title, content string, opts *offlinepush.Opts) error {
+func (d *Dummy) Push(ctx context.Context, userIDs []string, title, content string, opts *options.Opts) error {
 	return nil
 }

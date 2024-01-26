@@ -16,6 +16,7 @@ package msg
 
 import (
 	"context"
+	"github.com/openimsdk/open-im-server/v3/pkg/rpccache"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -29,7 +30,6 @@ import (
 
 	"github.com/openimsdk/open-im-server/v3/pkg/common/db/cache"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/db/controller"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/localcache"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/db/unrelation"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
 )
@@ -39,12 +39,11 @@ type (
 	msgServer               struct {
 		RegisterCenter         discoveryregistry.SvcDiscoveryRegistry
 		MsgDatabase            controller.CommonMsgDatabase
-		Group                  *rpcclient.GroupRpcClient
-		User                   *rpcclient.UserRpcClient
 		Conversation           *rpcclient.ConversationRpcClient
-		friend                 *rpcclient.FriendRpcClient
-		GroupLocalCache        *localcache.GroupLocalCache
-		ConversationLocalCache *localcache.ConversationLocalCache
+		UserLocalCache         *rpccache.UserLocalCache
+		FriendLocalCache       *rpccache.FriendLocalCache
+		GroupLocalCache        *rpccache.GroupLocalCache
+		ConversationLocalCache *rpccache.ConversationLocalCache
 		Handlers               MessageInterceptorChain
 		notificationSender     *rpcclient.NotificationSender
 	}
@@ -84,15 +83,15 @@ func Start(client discoveryregistry.SvcDiscoveryRegistry, server *grpc.Server) e
 	groupRpcClient := rpcclient.NewGroupRpcClient(client)
 	friendRpcClient := rpcclient.NewFriendRpcClient(client)
 	msgDatabase := controller.NewCommonMsgDatabase(msgDocModel, cacheModel)
+
 	s := &msgServer{
 		Conversation:           &conversationClient,
-		User:                   &userRpcClient,
-		Group:                  &groupRpcClient,
 		MsgDatabase:            msgDatabase,
 		RegisterCenter:         client,
-		GroupLocalCache:        localcache.NewGroupLocalCache(&groupRpcClient),
-		ConversationLocalCache: localcache.NewConversationLocalCache(&conversationClient),
-		friend:                 &friendRpcClient,
+		UserLocalCache:         rpccache.NewUserLocalCache(userRpcClient, rdb),
+		GroupLocalCache:        rpccache.NewGroupLocalCache(groupRpcClient, rdb),
+		ConversationLocalCache: rpccache.NewConversationLocalCache(conversationClient, rdb),
+		FriendLocalCache:       rpccache.NewFriendLocalCache(friendRpcClient, rdb),
 	}
 	go func() {
 		log.Println(http.ListenAndServe("0.0.0.0:6061", nil))
