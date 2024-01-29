@@ -19,14 +19,8 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
-	"sync"
 
 	"github.com/OpenIMSDK/tools/utils"
-)
-
-var (
-	gzipWriterPool = sync.Pool{New: func() any { return gzip.NewWriter(nil) }}
-	gzipReaderPool = sync.Pool{New: func() any { return new(gzip.Reader) }}
 )
 
 type Compressor interface {
@@ -58,7 +52,7 @@ func (g *GzipCompressor) Compress(rawData []byte) ([]byte, error) {
 }
 
 func (g *GzipCompressor) CompressWithPool(rawData []byte) ([]byte, error) {
-	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz := gzipWriterPool.Get()
 	defer gzipWriterPool.Put(gz)
 
 	gzipBuffer := bytes.Buffer{}
@@ -74,7 +68,7 @@ func (g *GzipCompressor) CompressWithPool(rawData []byte) ([]byte, error) {
 }
 
 func (g *GzipCompressor) CompressWithExternalPool(rawData []byte, compressedData *bytes.Buffer) error {
-	gz := gzipWriterPool.Get().(*gzip.Writer)
+	gz := gzipWriterPool.Get()
 	defer gzipWriterPool.Put(gz)
 
 	gz.Reset(compressedData)
@@ -103,7 +97,7 @@ func (g *GzipCompressor) DeCompress(compressedData []byte) ([]byte, error) {
 }
 
 func (g *GzipCompressor) DecompressWithPool(compressedData []byte) ([]byte, error) {
-	reader := gzipReaderPool.Get().(*gzip.Reader)
+	reader := gzipReaderPool.Get()
 	if reader == nil {
 		return nil, errors.New("NewReader failed")
 	}
@@ -123,7 +117,7 @@ func (g *GzipCompressor) DecompressWithPool(compressedData []byte) ([]byte, erro
 }
 
 func (g *GzipCompressor) DecompressWithExternalPool(compressedData []byte, rawData *bytes.Buffer) error {
-	reader := gzipReaderPool.Get().(*gzip.Reader)
+	reader := gzipReaderPool.Get()
 	if reader == nil {
 		return errors.New("NewReader failed")
 	}

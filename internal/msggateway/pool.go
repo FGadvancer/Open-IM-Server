@@ -2,7 +2,26 @@ package msggateway
 
 import (
 	"bytes"
+	"compress/gzip"
 	"sync"
+)
+
+var (
+	bufferPool = NewPool[*bytes.Buffer](func() *bytes.Buffer { return new(bytes.Buffer) },
+		func(b *bytes.Buffer) {
+			b.Reset()
+		})
+	reqPool = NewPool[*Req](func() *Req { return new(Req) },
+		func(r *Req) {
+			r.Data = nil
+			r.MsgIncr = ""
+			r.OperationID = ""
+			r.ReqIdentifier = 0
+			r.SendID = ""
+			r.Token = ""
+		})
+	gzipWriterPool = NewPool[*gzip.Writer](func() *gzip.Writer { return gzip.NewWriter(nil) }, nil)
+	gzipReaderPool = NewPool[*gzip.Reader](func() *gzip.Reader { return new(gzip.Reader) }, nil)
 )
 
 // Pool is a generic sync.Pool
@@ -39,18 +58,3 @@ func (p *Pool[T]) Get() T {
 func (p *Pool[T]) Put(item T) {
 	p.pool.Put(item)
 }
-
-var bufferPool = NewPool[*bytes.Buffer](func() *bytes.Buffer { return new(bytes.Buffer) },
-	func(b *bytes.Buffer) {
-		b.Reset()
-	})
-
-var reqPool = NewPool[*Req](func() *Req { return new(Req) },
-	func(r *Req) {
-		r.Data = nil
-		r.MsgIncr = ""
-		r.OperationID = ""
-		r.ReqIdentifier = 0
-		r.SendID = ""
-		r.Token = ""
-	})
