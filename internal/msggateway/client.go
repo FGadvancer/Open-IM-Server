@@ -76,17 +76,6 @@ type Client struct {
 	token          string
 }
 
-func newClient(ctx *UserConnContext, conn LongConn, isCompress bool) *Client {
-	return &Client{
-		w:          new(sync.Mutex),
-		conn:       conn,
-		PlatformID: utils.StringToInt(ctx.GetPlatformID()),
-		IsCompress: isCompress,
-		UserID:     ctx.GetUserID(),
-		ctx:        ctx,
-	}
-}
-
 // ResetClient updates the client's state with new connection and context information.
 func (c *Client) ResetClient(
 	ctx *UserConnContext,
@@ -138,7 +127,8 @@ func (c *Client) readMessage() {
 		}
 
 		log.ZDebug(c.ctx, "readMessage", "messageType", messageType)
-		if c.closed.Load() { // 连接刚置位已经关闭，但是协程还没退出的场景
+		//connection has been marked as closed, but the corresponding goroutine has not exited yet.
+		if c.closed.Load() {
 			c.closedErr = ErrConnClosed
 			return
 		}
@@ -169,18 +159,20 @@ func (c *Client) readMessage() {
 
 // handleMessage processes a single message received by the client.
 func (c *Client) handleMessage(message []byte) error {
+	buf := bufferPool.Get()
+	binaryReq := reqPool.Get()
+	defer bufferPool.Put(buf)
+	defer reqPool.Put(binaryReq)
 	if c.IsCompress {
 		var err error
-		message, err = c.longConnServer.DecompressWithPool(message)
+		err = c.longConnServer.DecompressWithExternalPool(message, buf)
 		if err != nil {
 			return utils.Wrap(err, "")
 		}
+	} else {
+		buf.Write(message)
 	}
-
-	var binaryReq = getReq()
-	defer freeReq(binaryReq)
-
-	err := c.longConnServer.Decode(message, binaryReq)
+	err := c.longConnServer.DecodeWithExternalPool(buf, binaryReq)
 	if err != nil {
 		return utils.Wrap(err, "")
 	}
@@ -310,8 +302,9 @@ func (c *Client) writeBinaryMsg(resp Resp) error {
 	if c.closed.Load() {
 		return nil
 	}
-
-	encodedBuf, err := c.longConnServer.Encode(resp)
+	buf := bufferPool.Get()
+	defer bufferPool.Put(buf)
+	err := c.longConnServer.EncodeWithExternalPool(resp, buf)
 	if err != nil {
 		return utils.Wrap(err, "")
 	}
@@ -321,14 +314,17 @@ func (c *Client) writeBinaryMsg(resp Resp) error {
 
 	_ = c.conn.SetWriteDeadline(writeWait)
 	if c.IsCompress {
-		resultBuf, compressErr := c.longConnServer.CompressWithPool(encodedBuf)
+		resultBuf := bufferPool.Get()
+		defer bufferPool.Put(resultBuf)
+
+		compressErr := c.longConnServer.CompressWithExternalPool(buf.Bytes(), resultBuf)
 		if compressErr != nil {
 			return utils.Wrap(compressErr, "")
 		}
-		return c.conn.WriteMessage(MessageBinary, resultBuf)
+		return c.conn.WriteMessage(MessageBinary, resultBuf.Bytes())
 	}
 
-	return c.conn.WriteMessage(MessageBinary, encodedBuf)
+	return c.conn.WriteMessage(MessageBinary, buf.Bytes())
 }
 
 func (c *Client) writePongMsg() error {

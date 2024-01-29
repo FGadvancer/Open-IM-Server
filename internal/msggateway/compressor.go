@@ -32,8 +32,10 @@ var (
 type Compressor interface {
 	Compress(rawData []byte) ([]byte, error)
 	CompressWithPool(rawData []byte) ([]byte, error)
+	CompressWithExternalPool(rawData []byte, compressedData *bytes.Buffer) error
 	DeCompress(compressedData []byte) ([]byte, error)
 	DecompressWithPool(compressedData []byte) ([]byte, error)
+	DecompressWithExternalPool(compressedData []byte, rawData *bytes.Buffer) error
 }
 type GzipCompressor struct {
 	compressProtocol string
@@ -71,6 +73,21 @@ func (g *GzipCompressor) CompressWithPool(rawData []byte) ([]byte, error) {
 	return gzipBuffer.Bytes(), nil
 }
 
+func (g *GzipCompressor) CompressWithExternalPool(rawData []byte, compressedData *bytes.Buffer) error {
+	gz := gzipWriterPool.Get().(*gzip.Writer)
+	defer gzipWriterPool.Put(gz)
+
+	gz.Reset(compressedData)
+
+	if _, err := gz.Write(rawData); err != nil {
+		return utils.Wrap(err, "")
+	}
+	if err := gz.Close(); err != nil {
+		return utils.Wrap(err, "")
+	}
+	return nil
+}
+
 func (g *GzipCompressor) DeCompress(compressedData []byte) ([]byte, error) {
 	buff := bytes.NewBuffer(compressedData)
 	reader, err := gzip.NewReader(buff)
@@ -103,4 +120,25 @@ func (g *GzipCompressor) DecompressWithPool(compressedData []byte) ([]byte, erro
 	}
 	_ = reader.Close()
 	return compressedData, nil
+}
+
+func (g *GzipCompressor) DecompressWithExternalPool(compressedData []byte, rawData *bytes.Buffer) error {
+	reader := gzipReaderPool.Get().(*gzip.Reader)
+	if reader == nil {
+		return errors.New("NewReader failed")
+	}
+	defer gzipReaderPool.Put(reader)
+
+	err := reader.Reset(bytes.NewReader(compressedData))
+	if err != nil {
+		return utils.Wrap(err, "NewReader failed")
+	}
+
+	_, err = rawData.ReadFrom(reader)
+	if err != nil {
+		return utils.Wrap(err, "ReadFrom failed")
+	}
+
+	_ = reader.Close()
+	return nil
 }

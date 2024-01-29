@@ -1,22 +1,25 @@
 package msggateway
 
 import (
+	"bytes"
 	"sync"
 )
 
 // Pool is a generic sync.Pool
 type Pool[T any] struct {
-	pool sync.Pool
+	pool      sync.Pool
+	resetFunc func(T)
 }
 
-// NewPool creates a new pool with a constructor function.
-func NewPool[T any](constructor func() T) *Pool[T] {
+// NewPool creates a new pool with a constructor and reset function.
+func NewPool[T any](constructor func() T, resetFunc func(T)) *Pool[T] {
 	return &Pool[T]{
 		pool: sync.Pool{
 			New: func() any {
 				return constructor()
 			},
 		},
+		resetFunc: resetFunc,
 	}
 }
 
@@ -24,10 +27,9 @@ func NewPool[T any](constructor func() T) *Pool[T] {
 func (p *Pool[T]) Get() T {
 	item := p.pool.Get().(T)
 
-	// Assuming T is a pointer to a struct, and the struct has a Reset method.
-	// Otherwise, you'll need to clear the data in a way appropriate for T.
-	if reseter, ok := any(item).(interface{ Reset() }); ok {
-		reseter.Reset()
+	// Assuming T has a Reset method and p.resetFunc is not nil exec reset to clear the data before returning it
+	if p.resetFunc != nil {
+		p.resetFunc(item)
 	}
 
 	return item
@@ -38,23 +40,17 @@ func (p *Pool[T]) Put(item T) {
 	p.pool.Put(item)
 }
 
-// Example usage with a hypothetical type and Reset method.
-type MyStruct struct {
-	// fields
-}
-
-func (m *MyStruct) Reset() {
-	// clear all fields
-}
-
-func main() {
-	pool := NewPool(func() *MyStruct {
-		return &MyStruct{}
+var bufferPool = NewPool[*bytes.Buffer](func() *bytes.Buffer { return new(bytes.Buffer) },
+	func(b *bytes.Buffer) {
+		b.Reset()
 	})
 
-	item := pool.Get()
-	// Use the item
-	item.Reset() // Manually reset if needed before putting it back
-
-	pool.Put(item)
-}
+var reqPool = NewPool[*Req](func() *Req { return new(Req) },
+	func(r *Req) {
+		r.Data = nil
+		r.MsgIncr = ""
+		r.OperationID = ""
+		r.ReqIdentifier = 0
+		r.SendID = ""
+		r.Token = ""
+	})

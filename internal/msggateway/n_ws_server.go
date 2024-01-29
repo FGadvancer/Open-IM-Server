@@ -64,12 +64,6 @@ type LongConnServer interface {
 	MessageHandler
 }
 
-var bufferPool = sync.Pool{
-	New: func() any {
-		return make([]byte, 1024)
-	},
-}
-
 type WsServer struct {
 	port              int
 	wsMaxConnNum      int64
@@ -77,7 +71,7 @@ type WsServer struct {
 	unregisterChan    chan *Client
 	kickHandlerChan   chan *kickHandler
 	clients           *UserMap
-	clientPool        sync.Pool
+	clientPool        *Pool[*Client]
 	onlineUserNum     atomic.Int64
 	onlineUserConnNum atomic.Int64
 	handshakeTimeout  time.Duration
@@ -154,11 +148,9 @@ func NewWsServer(opts ...Option) (*WsServer, error) {
 		wsMaxConnNum:     config.maxConnNum,
 		writeBufferSize:  config.writeBufferSize,
 		handshakeTimeout: config.handshakeTimeout,
-		clientPool: sync.Pool{
-			New: func() any {
-				return new(Client)
-			},
-		},
+		clientPool: NewPool[*Client](func() *Client {
+			return new(Client)
+		}, nil),
 		registerChan:    make(chan *Client, 1000),
 		unregisterChan:  make(chan *Client, 1000),
 		kickHandlerChan: make(chan *kickHandler, 1000),
@@ -282,7 +274,7 @@ func (ws *WsServer) registerClient(client *Client) {
 		log.ZDebug(client.ctx, "user exist", "userID", client.UserID, "platformID", client.PlatformID)
 		if clientOK {
 			ws.clients.Set(client.UserID, client)
-			// 已经有同平台的连接存在
+			// has same terminal login
 			log.ZInfo(client.ctx, "repeat login", "userID", client.UserID, "platformID", client.PlatformID, "old remote addr", getRemoteAdders(oldClients))
 			ws.onlineUserConnNum.Add(1)
 		} else {
@@ -516,7 +508,7 @@ func (ws *WsServer) wsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	client := ws.clientPool.Get().(*Client)
+	client := ws.clientPool.Get()
 	client.ResetClient(connContext, wsLongConn, connContext.GetBackground(), args.Compression, ws, args.Token)
 	ws.registerChan <- client
 	go client.readMessage()

@@ -22,8 +22,10 @@ import (
 )
 
 type Encoder interface {
-	Encode(data any) ([]byte, error)
-	Decode(encodeData []byte, decodeData any) error
+	Encode(rawData any) ([]byte, error)
+	EncodeWithExternalPool(rawData any, encodeData *bytes.Buffer) error
+	Decode(encodeData []byte, rawData any) error
+	DecodeWithExternalPool(encodeData *bytes.Buffer, rawData any) error
 }
 
 type GobEncoder struct{}
@@ -42,10 +44,28 @@ func (g *GobEncoder) Encode(data any) ([]byte, error) {
 	return buff.Bytes(), nil
 }
 
+func (g *GobEncoder) EncodeWithExternalPool(rawData any, encodeData *bytes.Buffer) error {
+	enc := gob.NewEncoder(encodeData)
+	err := enc.Encode(rawData)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (g *GobEncoder) Decode(encodeData []byte, decodeData any) error {
 	buff := bytes.NewBuffer(encodeData)
 	dec := gob.NewDecoder(buff)
 	err := dec.Decode(decodeData)
+	if err != nil {
+		return utils.Wrap(err, "")
+	}
+	return nil
+}
+
+func (g *GobEncoder) DecodeWithExternalPool(encodeData *bytes.Buffer, rawData any) error {
+	dec := gob.NewDecoder(encodeData)
+	err := dec.Decode(rawData)
 	if err != nil {
 		return utils.Wrap(err, "")
 	}
