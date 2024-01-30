@@ -51,7 +51,6 @@ type cache[V any] struct {
 	opt   *option
 	link  link.Link
 	local lru.LRU[string, V]
-	hook  Hook
 }
 
 func (c *cache[V]) onEvict(key string, value V) {
@@ -72,9 +71,9 @@ func (c *cache[V]) del(key ...string) {
 	for _, k := range key {
 		ok := c.local.Del(k)
 		if ok {
-			c.hook.IncrementDelHit()
+			c.opt.hook.IncrementDelHit()
 		} else {
-			c.hook.IncrementMiss()
+			c.opt.hook.IncrementMiss()
 		}
 	}
 }
@@ -92,14 +91,14 @@ func (c *cache[V]) GetLink(ctx context.Context, key string, fetch func(ctx conte
 			return fetch(ctx)
 		})
 		if fresh {
-			c.hook.IncrementMiss()
+			c.opt.hook.IncrementMiss()
 		} else {
-			c.hook.IncrementHit()
+			c.opt.hook.IncrementHit()
 		}
 		return v, err
 
 	} else {
-		c.hook.IncrementMiss()
+		c.opt.hook.IncrementMiss()
 		return fetch(ctx)
 	}
 }
