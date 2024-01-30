@@ -6,6 +6,7 @@ import (
 	"github.com/openimsdk/localcache"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/cachekey"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
 	"github.com/redis/go-redis/v9"
 )
@@ -21,6 +22,7 @@ func NewFriendLocalCache(client rpcclient.FriendRpcClient, cli redis.UniversalCl
 			localcache.WithLinkSlotNum(lc.SlotNum),
 			localcache.WithLocalSuccessTTL(lc.Success()),
 			localcache.WithLocalFailedTTL(lc.Failed()),
+			localcache.WithHook(newFriendCacheHook()),
 		),
 	}
 	if lc.Enable() {
@@ -64,3 +66,22 @@ func (f *FriendLocalCache) IsBlack(ctx context.Context, possibleBlackUserID, use
 		return f.client.IsBlack(ctx, possibleBlackUserID, userID)
 	}, cachekey.GetBlackIDsKey(userID)))
 }
+
+type friendCacheHook struct {
+}
+
+func newFriendCacheHook() *friendCacheHook {
+	return &friendCacheHook{}
+}
+
+func (f friendCacheHook) IncrementHit() {
+	prommetrics.CacheFriendHitsCounter.Inc()
+}
+
+func (f friendCacheHook) IncrementMiss() {
+	prommetrics.CacheFriendMissesCounter.Inc()
+}
+
+func (f friendCacheHook) IncrementDelHit() {}
+
+func (f friendCacheHook) IncrementDelMiss() {}

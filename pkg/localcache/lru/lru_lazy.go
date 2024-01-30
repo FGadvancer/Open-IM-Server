@@ -13,7 +13,7 @@ type layLruItem[V any] struct {
 	value   V
 }
 
-func NewLayLRU[K comparable, V any](size int, successTTL, failedTTL time.Duration, target Target, onEvict EvictCallback[K, V]) *LayLRU[K, V] {
+func NewLayLRU[K comparable, V any](size int, successTTL, failedTTL time.Duration, onEvict EvictCallback[K, V]) *LayLRU[K, V] {
 	var cb simplelru.EvictCallback[K, *layLruItem[V]]
 	if onEvict != nil {
 		cb = func(key K, value *layLruItem[V]) {
@@ -28,7 +28,6 @@ func NewLayLRU[K comparable, V any](size int, successTTL, failedTTL time.Duratio
 		core:       core,
 		successTTL: successTTL,
 		failedTTL:  failedTTL,
-		target:     target,
 	}
 }
 
@@ -37,10 +36,10 @@ type LayLRU[K comparable, V any] struct {
 	core       *simplelru.LRU[K, *layLruItem[V]]
 	successTTL time.Duration
 	failedTTL  time.Duration
-	target     Target
 }
 
-func (x *LayLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
+// Get Using explicit race locks can lead to lock contention in the presence of hot data.
+func (x *LayLRU[K, V]) Get(key K, fetch func() (V, error)) (V, bool, error) {
 	x.lock.Lock()
 	v, ok := x.core.Get(key)
 	if ok {
@@ -49,8 +48,7 @@ func (x *LayLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
 		expires, value, err := v.expires, v.value, v.err
 		if expires != 0 && expires > time.Now().UnixMilli() {
 			v.lock.Unlock()
-			x.target.IncrGetHit()
-			return value, err
+			return value, false, err
 		}
 	} else {
 		v = &layLruItem[V]{}
@@ -59,29 +57,20 @@ func (x *LayLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
 		x.lock.Unlock()
 	}
 	defer v.lock.Unlock()
-	if v.expires > time.Now().UnixMilli() {
-		return v.value, v.err
-	}
+
 	v.value, v.err = fetch()
 	if v.err == nil {
 		v.expires = time.Now().Add(x.successTTL).UnixMilli()
-		x.target.IncrGetSuccess()
 	} else {
 		v.expires = time.Now().Add(x.failedTTL).UnixMilli()
-		x.target.IncrGetFailed()
 	}
-	return v.value, v.err
+	return v.value, true, v.err
 }
 
 func (x *LayLRU[K, V]) Del(key K) bool {
 	x.lock.Lock()
 	ok := x.core.Remove(key)
 	x.lock.Unlock()
-	if ok {
-		x.target.IncrDelHit()
-	} else {
-		x.target.IncrDelNotFound()
-	}
 	return ok
 }
 

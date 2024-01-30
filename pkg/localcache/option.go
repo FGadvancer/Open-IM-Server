@@ -2,7 +2,6 @@ package localcache
 
 import (
 	"context"
-	"github.com/openimsdk/localcache/lru"
 	"time"
 )
 
@@ -15,7 +14,7 @@ func defaultOption() *option {
 		localSuccessTTL: time.Minute,
 		localFailedTTL:  time.Second * 5,
 		delFn:           make([]func(ctx context.Context, key ...string), 0, 2),
-		target:          emptyTarget{},
+		hook:            emptyHook{},
 	}
 }
 
@@ -29,7 +28,7 @@ type option struct {
 	localSuccessTTL time.Duration
 	localFailedTTL  time.Duration
 	delFn           []func(ctx context.Context, key ...string)
-	target          lru.Target
+	hook            Hook
 }
 
 type Option func(o *option)
@@ -90,12 +89,12 @@ func WithLocalFailedTTL(localFailedTTL time.Duration) Option {
 	}
 }
 
-func WithTarget(target lru.Target) Option {
-	if target == nil {
-		panic("target should not be nil")
+func WithHook(hook Hook) Option {
+	if hook == nil {
+		panic("hook should not be nil")
 	}
 	return func(o *option) {
-		o.target = target
+		o.hook = hook
 	}
 }
 
@@ -108,14 +107,12 @@ func WithDeleteKeyBefore(fn func(ctx context.Context, key ...string)) Option {
 	}
 }
 
-type emptyTarget struct{}
+type emptyHook struct{}
 
-func (e emptyTarget) IncrGetHit() {}
+func (e emptyHook) IncrementHit() {}
 
-func (e emptyTarget) IncrGetSuccess() {}
+func (e emptyHook) IncrementMiss() {}
 
-func (e emptyTarget) IncrGetFailed() {}
+func (e emptyHook) IncrementDelHit() {}
 
-func (e emptyTarget) IncrDelHit() {}
-
-func (e emptyTarget) IncrDelNotFound() {}
+func (e emptyHook) IncrementDelMiss() {}

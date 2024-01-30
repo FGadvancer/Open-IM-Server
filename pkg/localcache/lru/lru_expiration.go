@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func NewExpirationLRU[K comparable, V any](size int, successTTL, failedTTL time.Duration, target Target, onEvict EvictCallback[K, V]) LRU[K, V] {
+func NewExpirationLRU[K comparable, V any](size int, successTTL, failedTTL time.Duration, onEvict EvictCallback[K, V]) LRU[K, V] {
 	var cb expirable.EvictCallback[K, *expirationLruItem[V]]
 	if onEvict != nil {
 		cb = func(key K, value *expirationLruItem[V]) {
@@ -18,7 +18,6 @@ func NewExpirationLRU[K comparable, V any](size int, successTTL, failedTTL time.
 		core:       core,
 		successTTL: successTTL,
 		failedTTL:  failedTTL,
-		target:     target,
 	}
 }
 
@@ -33,18 +32,16 @@ type ExpirationLRU[K comparable, V any] struct {
 	core       *expirable.LRU[K, *expirationLruItem[V]]
 	successTTL time.Duration
 	failedTTL  time.Duration
-	target     Target
 }
 
-func (x *ExpirationLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
+func (x *ExpirationLRU[K, V]) Get(key K, fetch func() (V, error)) (V, bool, error) {
 	x.lock.Lock()
 	v, ok := x.core.Get(key)
 	if ok {
 		x.lock.Unlock()
-		x.target.IncrGetSuccess()
 		v.lock.RLock()
 		defer v.lock.RUnlock()
-		return v.value, v.err
+		return v.value, false, v.err
 	} else {
 		v = &expirationLruItem[V]{}
 		x.core.Add(key, v)
@@ -52,13 +49,10 @@ func (x *ExpirationLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
 		x.lock.Unlock()
 		defer v.lock.Unlock()
 		v.value, v.err = fetch()
-		if v.err == nil {
-			x.target.IncrGetSuccess()
-		} else {
-			x.target.IncrGetFailed()
+		if v.err != nil {
 			x.core.Remove(key)
 		}
-		return v.value, v.err
+		return v.value, true, v.err
 	}
 }
 
@@ -66,11 +60,6 @@ func (x *ExpirationLRU[K, V]) Del(key K) bool {
 	x.lock.Lock()
 	ok := x.core.Remove(key)
 	x.lock.Unlock()
-	if ok {
-		x.target.IncrDelHit()
-	} else {
-		x.target.IncrDelNotFound()
-	}
 	return ok
 }
 

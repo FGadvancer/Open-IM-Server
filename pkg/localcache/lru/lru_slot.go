@@ -22,7 +22,7 @@ func (x *slotLRU[K, V]) getIndex(k K) uint64 {
 	return x.hash(k) % x.n
 }
 
-func (x *slotLRU[K, V]) Get(key K, fetch func() (V, error)) (V, error) {
+func (x *slotLRU[K, V]) Get(key K, fetch func() (V, error)) (V, bool, error) {
 	return x.slots[x.getIndex(key)].Get(key, fetch)
 }
 

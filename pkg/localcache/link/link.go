@@ -11,17 +11,21 @@ type Link interface {
 	Del(key string) map[string]struct{}
 }
 
+// linkKey When a key is deleted, the corresponding linked keys will also be cleared from the local cache.
+// The linkKey stores a bidirectional linking relationship, where key "a" is associated with keys "b", "c", "d", and so on,
+// and key "b" is associated with key "a", and so on.
+type linkKey struct {
+	lock sync.Mutex
+	data map[string]map[string]struct{}
+}
+
 func newLinkKey() *linkKey {
 	return &linkKey{
 		data: make(map[string]map[string]struct{}),
 	}
 }
 
-type linkKey struct {
-	lock sync.Mutex
-	data map[string]map[string]struct{}
-}
-
+// link stores the link relationship between keys
 func (x *linkKey) link(key string, link ...string) {
 	x.lock.Lock()
 	defer x.lock.Unlock()
@@ -90,6 +94,9 @@ func (x *slot) Del(key string) map[string]struct{} {
 	return x.delKey(key)
 }
 
+// delKey when a key is deleted, all keys associated with its relationship should also be deleted.
+// This involves recursively obtaining all child keys of each key and deleting them in sequence.
+// Additionally, the function should return all the keys associated with the deleted key for cache deletion purposes.
 func (x *slot) delKey(k string) map[string]struct{} {
 	del := make(map[string]struct{})
 	stack := []string{k}

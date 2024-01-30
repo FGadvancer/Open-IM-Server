@@ -26,9 +26,9 @@ func New[V any](opts ...Option) Cache[V] {
 	if opt.localSlotNum > 0 && opt.localSlotSize > 0 {
 		createSimpleLRU := func() lru.LRU[string, V] {
 			if opt.expirationEvict {
-				return lru.NewExpirationLRU[string, V](opt.localSlotSize, opt.localSuccessTTL, opt.localFailedTTL, opt.target, c.onEvict)
+				return lru.NewExpirationLRU[string, V](opt.localSlotSize, opt.localSuccessTTL, opt.localFailedTTL, c.onEvict)
 			} else {
-				return lru.NewLayLRU[string, V](opt.localSlotSize, opt.localSuccessTTL, opt.localFailedTTL, opt.target, c.onEvict)
+				return lru.NewLayLRU[string, V](opt.localSlotSize, opt.localSuccessTTL, opt.localFailedTTL, c.onEvict)
 			}
 		}
 		if opt.localSlotNum == 1 {
@@ -51,13 +51,14 @@ type cache[V any] struct {
 	opt   *option
 	link  link.Link
 	local lru.LRU[string, V]
+	hook  Hook
 }
 
 func (c *cache[V]) onEvict(key string, value V) {
 	if c.link != nil {
 		lks := c.link.Del(key)
 		for k := range lks {
-			if key != k { // prevent deadlock
+			if key != k { // prevent infinite loops.
 				c.local.Del(k)
 			}
 		}
@@ -69,12 +70,11 @@ func (c *cache[V]) del(key ...string) {
 		return
 	}
 	for _, k := range key {
-		c.local.Del(k)
-		if c.link != nil {
-			lks := c.link.Del(k)
-			for k := range lks {
-				c.local.Del(k)
-			}
+		ok := c.local.Del(k)
+		if ok {
+			c.hook.IncrementDelHit()
+		} else {
+			c.hook.IncrementMiss()
 		}
 	}
 }
@@ -85,13 +85,21 @@ func (c *cache[V]) Get(ctx context.Context, key string, fetch func(ctx context.C
 
 func (c *cache[V]) GetLink(ctx context.Context, key string, fetch func(ctx context.Context) (V, error), link ...string) (V, error) {
 	if c.local != nil {
-		return c.local.Get(key, func() (V, error) {
+		v, fresh, err := c.local.Get(key, func() (V, error) {
 			if len(link) > 0 {
 				c.link.Link(key, link...)
 			}
 			return fetch(ctx)
 		})
+		if fresh {
+			c.hook.IncrementMiss()
+		} else {
+			c.hook.IncrementHit()
+		}
+		return v, err
+
 	} else {
+		c.hook.IncrementMiss()
 		return fetch(ctx)
 	}
 }

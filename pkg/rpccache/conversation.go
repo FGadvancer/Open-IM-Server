@@ -56,7 +56,7 @@ func (c *ConversationLocalCache) GetConversation(ctx context.Context, userID, co
 	defer func() {
 		if err == nil {
 			log.ZDebug(ctx, "ConversationLocalCache GetConversation return", "value", val)
-		} else {
+		} else if !errs.ErrRecordNotFound.Is(err) {
 			log.ZError(ctx, "ConversationLocalCache GetConversation return", err)
 		}
 	}()

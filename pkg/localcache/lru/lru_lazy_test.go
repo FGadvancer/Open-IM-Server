@@ -49,7 +49,7 @@ func TestName(t *testing.T) {
 		h.Write(*(*[]byte)(unsafe.Pointer(&k)))
 		return h.Sum64()
 	}, func() LRU[string, string] {
-		return NewExpirationLRU[string, string](100, time.Second*60, time.Second, target, nil)
+		return NewExpirationLRU[string, string](100, time.Second*60, time.Second, nil)
 	})
 	//l := NewInertiaLRU[string, string](1000, time.Second*20, time.Second*5, target)
 
@@ -61,7 +61,7 @@ func TestName(t *testing.T) {
 			//} else {
 			//	t.Error("key", key, err)
 			//}
-			v, err := l.Get(key, fetch)
+			v, _, err := l.Get(key, fetch)
 			//time.Sleep(time.Second / 100)
 			func(v ...any) {}(v, err)
 		}

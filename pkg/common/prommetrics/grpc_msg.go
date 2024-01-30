@@ -35,4 +35,17 @@ var (
 		Name: "group_chat_msg_process_failed_total",
 		Help: "The number of group chat msg failed processed",
 	})
+	CacheFriendHitsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cache_friend_hits_total",
+		Help: "Total number of friend cache hits",
+	})
+
+	CacheFriendMissesCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "cache_friend_misses_total",
+		Help: "Total number of friend cache misses",
+	})
+	CacheFriendMemoryUsageGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "cache_friend_memory_usage_bytes",
+		Help: "Current memory usage of the friend cache in bytes",
+	})
 )

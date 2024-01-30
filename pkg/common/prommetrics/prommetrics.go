@@ -38,9 +38,12 @@ func GetGrpcCusMetrics(registerName string) []prometheus.Collector {
 	case config2.Config.RpcRegisterName.OpenImMessageGatewayName:
 		return []prometheus.Collector{OnlineUserGauge, GateWaySendMsgTotalCounter}
 	case config2.Config.RpcRegisterName.OpenImMsgName:
-		return []prometheus.Collector{SingleChatMsgProcessSuccessCounter, SingleChatMsgProcessFailedCounter, GroupChatMsgProcessSuccessCounter, GroupChatMsgProcessFailedCounter}
+		return []prometheus.Collector{SingleChatMsgProcessSuccessCounter, SingleChatMsgProcessFailedCounter,
+			GroupChatMsgProcessSuccessCounter, GroupChatMsgProcessFailedCounter, CacheFriendHitsCounter,
+			CacheFriendMissesCounter, CacheFriendMemoryUsageGauge}
 	case "Transfer":
-		return []prometheus.Collector{MsgInsertRedisSuccessCounter, MsgInsertRedisFailedCounter, MsgInsertMongoSuccessCounter, MsgInsertMongoFailedCounter, SeqSetFailedCounter}
+		return []prometheus.Collector{MsgInsertRedisSuccessCounter, MsgInsertRedisFailedCounter,
+			MsgInsertMongoSuccessCounter, MsgInsertMongoFailedCounter, SeqSetFailedCounter}
 	case config2.Config.RpcRegisterName.OpenImPushName:
 		return []prometheus.Collector{MsgOfflinePushFailedCounter}
 	case config2.Config.RpcRegisterName.OpenImAuthName:
