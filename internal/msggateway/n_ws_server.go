@@ -155,7 +155,7 @@ func NewWsServer(opts ...Option) (*WsServer, error) {
 		unregisterChan:  make(chan *Client, 1000),
 		kickHandlerChan: make(chan *kickHandler, 1000),
 		validate:        v,
-		clients:         newUserMap(10),
+		clients:         newUserMap(100),
 		Compressor:      NewGzipCompressor(),
 		Encoder:         NewGobEncoder(),
 	}, nil

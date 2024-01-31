@@ -20,7 +20,10 @@ var (
 			r.SendID = ""
 			r.Token = ""
 		})
-	gzipWriterPool = NewPool[*gzip.Writer](func() *gzip.Writer { return gzip.NewWriter(nil) }, nil)
+	gzipWriterPool = NewPool[*gzip.Writer](func() *gzip.Writer {
+		w, _ := gzip.NewWriterLevel(nil, gzip.BestSpeed)
+		return w
+	}, nil)
 	gzipReaderPool = NewPool[*gzip.Reader](func() *gzip.Reader { return new(gzip.Reader) }, nil)
 )
 
