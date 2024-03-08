@@ -79,7 +79,7 @@ func run(port int, proPort int) error {
 		return err
 	}
 
-	log.ZInfo(context.Background(), "api register public config to discov")
+	log.ZInfo(context.Background(), "api register public config to d343iscov")
 	if err = client.RegisterConf2Registry(constant.OpenIMCommonConfigKey, config.Config.EncodeConfig()); err != nil {
 		log.ZError(context.Background(), "Failed to register public config to discov", err)
 		return err
