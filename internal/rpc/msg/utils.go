@@ -15,35 +15,13 @@
 package msg
 
 import (
-	"github.com/OpenIMSDK/protocol/constant"
-	"github.com/OpenIMSDK/protocol/sdkws"
-	"github.com/OpenIMSDK/tools/utils"
+	"github.com/openimsdk/tools/errs"
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 )
 
-func isMessageHasReadEnabled(msgData *sdkws.MsgData) bool {
-	switch {
-	case msgData.ContentType == constant.HasReadReceipt && msgData.SessionType == constant.SingleChatType:
-		if config.Config.SingleMessageHasReadReceiptEnable {
-			return true
-		} else {
-			return false
-		}
-	case msgData.ContentType == constant.HasReadReceipt && msgData.SessionType == constant.SuperGroupChatType:
-		if config.Config.GroupMessageHasReadReceiptEnable {
-			return true
-		} else {
-			return false
-		}
-	}
-	return true
-}
-
 func IsNotFound(err error) bool {
-	switch utils.Unwrap(err) {
+	switch errs.Unwrap(err) {
 	case redis.Nil, mongo.ErrNoDocuments:
 		return true
 	default:

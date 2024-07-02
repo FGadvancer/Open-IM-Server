@@ -15,31 +15,37 @@
 package discoveryregister
 
 import (
-	"errors"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister/direct"
-	"os"
-
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister/kubernetes"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister/zookeeper"
-
-	"github.com/OpenIMSDK/tools/discoveryregistry"
+	"github.com/openimsdk/tools/discovery"
+	"github.com/openimsdk/tools/discovery/etcd"
+	"github.com/openimsdk/tools/discovery/zookeeper"
+	"github.com/openimsdk/tools/errs"
+	"time"
 )
 
 // NewDiscoveryRegister creates a new service discovery and registry client based on the provided environment type.
-func NewDiscoveryRegister(envType string) (discoveryregistry.SvcDiscoveryRegistry, error) {
-
-	if os.Getenv("ENVS_DISCOVERY") != "" {
-		envType = os.Getenv("ENVS_DISCOVERY")
-	}
-
-	switch envType {
+func NewDiscoveryRegister(discovery *config.Discovery, share *config.Share) (discovery.SvcDiscoveryRegistry, error) {
+	switch discovery.Enable {
 	case "zookeeper":
-		return zookeeper.NewZookeeperDiscoveryRegister()
+		return zookeeper.NewZkClient(
+			discovery.ZooKeeper.Address,
+			discovery.ZooKeeper.Schema,
+			zookeeper.WithFreq(time.Hour),
+			zookeeper.WithUserNameAndPassword(discovery.ZooKeeper.Username, discovery.ZooKeeper.Password),
+			zookeeper.WithRoundRobin(),
+			zookeeper.WithTimeout(10),
+		)
 	case "k8s":
-		return kubernetes.NewK8sDiscoveryRegister()
-	case "direct":
-		return direct.NewConnDirect()
+		return kubernetes.NewK8sDiscoveryRegister(share.RpcRegisterName.MessageGateway)
+	case "etcd":
+		return etcd.NewSvcDiscoveryRegistry(
+			discovery.Etcd.RootDirectory,
+			discovery.Etcd.Address,
+			etcd.WithDialTimeout(10*time.Second),
+			etcd.WithMaxCallSendMsgSize(20*1024*1024),
+			etcd.WithUsernameAndPassword(discovery.Etcd.Username, discovery.Etcd.Password))
 	default:
-		return nil, errors.New("envType not correct")
+		return nil, errs.New("unsupported discovery type", "type", discovery.Enable).Wrap()
 	}
 }

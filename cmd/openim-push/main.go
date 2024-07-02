@@ -15,19 +15,12 @@
 package main
 
 import (
-	"github.com/openimsdk/open-im-server/v3/internal/push"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/cmd"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/system/program"
 )
 
 func main() {
-	pushCmd := cmd.NewRpcCmd(cmd.RpcPushServer)
-	pushCmd.AddPortFlag()
-	pushCmd.AddPrometheusPortFlag()
-	if err := pushCmd.Exec(); err != nil {
-		panic(err.Error())
-	}
-	if err := pushCmd.StartSvr(config.Config.RpcRegisterName.OpenImPushName, push.Start); err != nil {
-		panic(err.Error())
+	if err := cmd.NewPushRpcCmd().Exec(); err != nil {
+		program.ExitWithError(err)
 	}
 }

@@ -15,64 +15,43 @@
 package cmd
 
 import (
-	"log"
-
-	"github.com/spf13/cobra"
-
-	"github.com/OpenIMSDK/protocol/constant"
+	"context"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
 
 	"github.com/openimsdk/open-im-server/v3/internal/msggateway"
-	v3config "github.com/openimsdk/open-im-server/v3/pkg/common/config"
+
+	"github.com/openimsdk/tools/system/program"
+	"github.com/spf13/cobra"
 )
 
 type MsgGatewayCmd struct {
 	*RootCmd
+	ctx              context.Context
+	configMap        map[string]any
+	msgGatewayConfig *msggateway.Config
 }
 
 func NewMsgGatewayCmd() *MsgGatewayCmd {
-	ret := &MsgGatewayCmd{NewRootCmd("msgGateway")}
-	ret.SetRootCmdPt(ret)
+	var msgGatewayConfig msggateway.Config
+	ret := &MsgGatewayCmd{msgGatewayConfig: &msgGatewayConfig}
+	ret.configMap = map[string]any{
+		OpenIMMsgGatewayCfgFileName: &msgGatewayConfig.MsgGateway,
+		ShareFileName:               &msgGatewayConfig.Share,
+		WebhooksConfigFileName:      &msgGatewayConfig.WebhooksConfig,
+		DiscoveryConfigFilename:     &msgGatewayConfig.Discovery,
+	}
+	ret.RootCmd = NewRootCmd(program.GetProcessName(), WithConfigMap(ret.configMap))
+	ret.ctx = context.WithValue(context.Background(), "version", config.Version)
+	ret.Command.RunE = func(cmd *cobra.Command, args []string) error {
+		return ret.runE()
+	}
 	return ret
 }
 
-func (m *MsgGatewayCmd) AddWsPortFlag() {
-	m.Command.Flags().IntP(constant.FlagWsPort, "w", 0, "ws server listen port")
-}
-
-func (m *MsgGatewayCmd) getWsPortFlag(cmd *cobra.Command) int {
-	port, err := cmd.Flags().GetInt(constant.FlagWsPort)
-	if err != nil {
-		log.Println("Error getting ws port flag:", err)
-	}
-	if port == 0 {
-		port = m.PortFromConfig(constant.FlagWsPort)
-	}
-	return port
-}
-
-func (m *MsgGatewayCmd) addRunE() {
-	m.Command.RunE = func(cmd *cobra.Command, args []string) error {
-		return msggateway.RunWsAndServer(m.getPortFlag(cmd), m.getWsPortFlag(cmd), m.getPrometheusPortFlag(cmd))
-	}
-}
-
 func (m *MsgGatewayCmd) Exec() error {
-	m.addRunE()
 	return m.Execute()
 }
 
-func (m *MsgGatewayCmd) GetPortFromConfig(portType string) int {
-	switch portType {
-	case constant.FlagWsPort:
-		return v3config.Config.LongConnSvr.OpenImWsPort[0]
-
-	case constant.FlagPort:
-		return v3config.Config.LongConnSvr.OpenImMessageGatewayPort[0]
-
-	case constant.FlagPrometheusPort:
-		return v3config.Config.Prometheus.MessageGatewayPrometheusPort[0]
-
-	default:
-		return 0
-	}
+func (m *MsgGatewayCmd) runE() error {
+	return msggateway.Start(m.ctx, m.Index(), m.msgGatewayConfig)
 }

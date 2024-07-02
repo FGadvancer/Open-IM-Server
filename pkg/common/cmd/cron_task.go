@@ -14,25 +14,41 @@
 
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"context"
+	"github.com/openimsdk/open-im-server/v3/internal/tools"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/system/program"
+	"github.com/spf13/cobra"
+)
 
 type CronTaskCmd struct {
 	*RootCmd
+	ctx            context.Context
+	configMap      map[string]any
+	cronTaskConfig *tools.CronTaskConfig
 }
 
 func NewCronTaskCmd() *CronTaskCmd {
-	ret := &CronTaskCmd{NewRootCmd("cronTask", WithCronTaskLogName())}
-	ret.SetRootCmdPt(ret)
+	var cronTaskConfig tools.CronTaskConfig
+	ret := &CronTaskCmd{cronTaskConfig: &cronTaskConfig}
+	ret.configMap = map[string]any{
+		OpenIMCronTaskCfgFileName: &cronTaskConfig.CronTask,
+		ShareFileName:             &cronTaskConfig.Share,
+		DiscoveryConfigFilename:   &cronTaskConfig.Discovery,
+	}
+	ret.RootCmd = NewRootCmd(program.GetProcessName(), WithConfigMap(ret.configMap))
+	ret.ctx = context.WithValue(context.Background(), "version", config.Version)
+	ret.Command.RunE = func(cmd *cobra.Command, args []string) error {
+		return ret.runE()
+	}
 	return ret
 }
 
-func (c *CronTaskCmd) addRunE(f func() error) {
-	c.Command.RunE = func(cmd *cobra.Command, args []string) error {
-		return f()
-	}
+func (a *CronTaskCmd) Exec() error {
+	return a.Execute()
 }
 
-func (c *CronTaskCmd) Exec(f func() error) error {
-	c.addRunE(f)
-	return c.Execute()
+func (a *CronTaskCmd) runE() error {
+	return tools.Start(a.ctx, a.cronTaskConfig)
 }

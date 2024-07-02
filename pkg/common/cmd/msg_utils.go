@@ -16,17 +16,22 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-
-	"github.com/openimsdk/open-im-server/v3/internal/tools"
 )
 
 type MsgUtilsCmd struct {
 	cobra.Command
-	msgTool *tools.MsgTool
 }
 
 func (m *MsgUtilsCmd) AddUserIDFlag() {
 	m.Command.PersistentFlags().StringP("userID", "u", "", "openIM userID")
+}
+func (m *MsgUtilsCmd) AddIndexFlag() {
+	m.Command.PersistentFlags().IntP(FlagTransferIndex, "i", 0, "process startup sequence number")
+}
+
+func (m *MsgUtilsCmd) AddConfigDirFlag() {
+	m.Command.PersistentFlags().StringP(FlagConf, "c", "", "path of config directory")
+
 }
 
 func (m *MsgUtilsCmd) getUserIDFlag(cmdLines *cobra.Command) string {
@@ -38,19 +43,19 @@ func (m *MsgUtilsCmd) AddFixAllFlag() {
 	m.Command.PersistentFlags().BoolP("fixAll", "f", false, "openIM fix all seqs")
 }
 
-func (m *MsgUtilsCmd) getFixAllFlag(cmdLines *cobra.Command) bool {
+/* func (m *MsgUtilsCmd) getFixAllFlag(cmdLines *cobra.Command) bool {
 	fixAll, _ := cmdLines.Flags().GetBool("fixAll")
 	return fixAll
-}
+} */
 
 func (m *MsgUtilsCmd) AddClearAllFlag() {
-	m.Command.PersistentFlags().BoolP("clearAll", "c", false, "openIM clear all seqs")
+	m.Command.PersistentFlags().BoolP("clearAll", "", false, "openIM clear all seqs")
 }
 
-func (m *MsgUtilsCmd) getClearAllFlag(cmdLines *cobra.Command) bool {
+/* func (m *MsgUtilsCmd) getClearAllFlag(cmdLines *cobra.Command) bool {
 	clearAll, _ := cmdLines.Flags().GetBool("clearAll")
 	return clearAll
-}
+} */
 
 func (m *MsgUtilsCmd) AddSuperGroupIDFlag() {
 	m.Command.PersistentFlags().StringP("superGroupID", "g", "", "openIM superGroupID")
@@ -65,19 +70,19 @@ func (m *MsgUtilsCmd) AddBeginSeqFlag() {
 	m.Command.PersistentFlags().Int64P("beginSeq", "b", 0, "openIM beginSeq")
 }
 
-func (m *MsgUtilsCmd) getBeginSeqFlag(cmdLines *cobra.Command) int64 {
+/* func (m *MsgUtilsCmd) getBeginSeqFlag(cmdLines *cobra.Command) int64 {
 	beginSeq, _ := cmdLines.Flags().GetInt64("beginSeq")
 	return beginSeq
-}
+} */
 
 func (m *MsgUtilsCmd) AddLimitFlag() {
 	m.Command.PersistentFlags().Int64P("limit", "l", 0, "openIM limit")
 }
 
-func (m *MsgUtilsCmd) getLimitFlag(cmdLines *cobra.Command) int64 {
+/* func (m *MsgUtilsCmd) getLimitFlag(cmdLines *cobra.Command) int64 {
 	limit, _ := cmdLines.Flags().GetInt64("limit")
 	return limit
-}
+} */
 
 func (m *MsgUtilsCmd) Execute() error {
 	return m.Command.Execute()
@@ -136,27 +141,7 @@ func NewSeqCmd() *SeqCmd {
 
 func (s *SeqCmd) GetSeqCmd() *cobra.Command {
 	s.Command.Run = func(cmdLines *cobra.Command, args []string) {
-		_, err := tools.InitMsgTool()
-		if err != nil {
-			panic(err)
-		}
-		userID := s.getUserIDFlag(cmdLines)
-		superGroupID := s.getSuperGroupIDFlag(cmdLines)
-		// beginSeq := s.getBeginSeqFlag(cmdLines)
-		// limit := s.getLimitFlag(cmdLines)
-		if userID != "" {
-			// seq, err := msgTool.s(context.Background(), userID)
-			if err != nil {
-				panic(err)
-			}
-			// println(seq)
-		} else if superGroupID != "" {
-			// seq, err := msgTool.GetSuperGroupSeq(context.Background(), superGroupID)
-			if err != nil {
-				panic(err)
-			}
-			// println(seq)
-		}
+
 	}
 	return &s.Command
 }

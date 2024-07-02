@@ -18,40 +18,34 @@ import (
 	"context"
 
 	"github.com/IBM/sarama"
-	"google.golang.org/protobuf/proto"
-
-	pbmsg "github.com/OpenIMSDK/protocol/msg"
-	"github.com/OpenIMSDK/tools/log"
-
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/controller"
-	kfk "github.com/openimsdk/open-im-server/v3/pkg/common/kafka"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/controller"
+	pbmsg "github.com/openimsdk/protocol/msg"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/mq/kafka"
+	"google.golang.org/protobuf/proto"
 )
 
 type OnlineHistoryMongoConsumerHandler struct {
-	historyConsumerGroup *kfk.MConsumerGroup
+	historyConsumerGroup *kafka.MConsumerGroup
 	msgDatabase          controller.CommonMsgDatabase
 }
 
-func NewOnlineHistoryMongoConsumerHandler(database controller.CommonMsgDatabase) *OnlineHistoryMongoConsumerHandler {
-	mc := &OnlineHistoryMongoConsumerHandler{
-		historyConsumerGroup: kfk.NewMConsumerGroup(&kfk.MConsumerGroupConfig{
-			KafkaVersion:   sarama.V2_0_0_0,
-			OffsetsInitial: sarama.OffsetNewest, IsReturnErr: false,
-		}, []string{config.Config.Kafka.MsgToMongo.Topic},
-			config.Config.Kafka.Addr, config.Config.Kafka.ConsumerGroupID.MsgToMongo),
-		msgDatabase: database,
+func NewOnlineHistoryMongoConsumerHandler(kafkaConf *config.Kafka, database controller.CommonMsgDatabase) (*OnlineHistoryMongoConsumerHandler, error) {
+	historyConsumerGroup, err := kafka.NewMConsumerGroup(kafkaConf.Build(), kafkaConf.ToMongoGroupID, []string{kafkaConf.ToMongoTopic}, true)
+	if err != nil {
+		return nil, err
 	}
-	return mc
+
+	mc := &OnlineHistoryMongoConsumerHandler{
+		historyConsumerGroup: historyConsumerGroup,
+		msgDatabase:          database,
+	}
+	return mc, nil
 }
 
-func (mc *OnlineHistoryMongoConsumerHandler) handleChatWs2Mongo(
-	ctx context.Context,
-	cMsg *sarama.ConsumerMessage,
-	key string,
-	session sarama.ConsumerGroupSession,
-) {
+func (mc *OnlineHistoryMongoConsumerHandler) handleChatWs2Mongo(ctx context.Context, cMsg *sarama.ConsumerMessage, key string, session sarama.ConsumerGroupSession) {
 	msg := cMsg.Value
 	msgFromMQ := pbmsg.MsgDataToMongoByMQ{}
 	err := proto.Unmarshal(msg, &msgFromMQ)
@@ -95,7 +89,6 @@ func (mc *OnlineHistoryMongoConsumerHandler) handleChatWs2Mongo(
 			msgFromMQ.ConversationID,
 		)
 	}
-	mc.msgDatabase.DelUserDeleteMsgsList(ctx, msgFromMQ.ConversationID, seqs)
 }
 
 func (OnlineHistoryMongoConsumerHandler) Setup(_ sarama.ConsumerGroupSession) error   { return nil }

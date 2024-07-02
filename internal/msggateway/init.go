@@ -15,57 +15,49 @@
 package msggateway
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-	_ "net/http/pprof"
+	"context"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/utils/datautil"
 	"time"
 
-	"github.com/OpenIMSDK/tools/utils"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/log"
 )
 
-// RunWsAndServer run ws server.
-func RunWsAndServer(rpcPort, wsPort, prometheusPort int) error {
-	fmt.Println(
-		"start rpc/msg_gateway server, port: ",
-		rpcPort,
-		wsPort,
-		prometheusPort,
-		", OpenIM version: ",
-		config.Version,
-	)
-	go func() {
-		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-	}()
+type Config struct {
+	MsgGateway     config.MsgGateway
+	Share          config.Share
+	WebhooksConfig config.Webhooks
+	Discovery      config.Discovery
+}
+
+// Start run ws server.
+func Start(ctx context.Context, index int, conf *Config) error {
+	log.CInfo(ctx, "MSG-GATEWAY server is initializing", "rpcPorts", conf.MsgGateway.RPC.Ports,
+		"wsPort", conf.MsgGateway.LongConnSvr.Ports, "prometheusPorts", conf.MsgGateway.Prometheus.Ports)
+	wsPort, err := datautil.GetElemByIndex(conf.MsgGateway.LongConnSvr.Ports, index)
+	if err != nil {
+		return err
+	}
+	rpcPort, err := datautil.GetElemByIndex(conf.MsgGateway.RPC.Ports, index)
+	if err != nil {
+		return err
+	}
 	longServer, err := NewWsServer(
+		conf,
 		WithPort(wsPort),
-		WithMaxConnNum(int64(config.Config.LongConnSvr.WebsocketMaxConnNum)),
-		WithHandshakeTimeout(time.Duration(config.Config.LongConnSvr.WebsocketTimeout)*time.Second),
-		WithMessageMaxMsgLength(config.Config.LongConnSvr.WebsocketMaxMsgLen),
-		WithWriteBufferSize(config.Config.LongConnSvr.WebsocketWriteBufferSize),
+		WithMaxConnNum(int64(conf.MsgGateway.LongConnSvr.WebsocketMaxConnNum)),
+		WithHandshakeTimeout(time.Duration(conf.MsgGateway.LongConnSvr.WebsocketTimeout)*time.Second),
+		WithMessageMaxMsgLength(conf.MsgGateway.LongConnSvr.WebsocketMaxMsgLen),
 	)
 	if err != nil {
 		return err
 	}
 
-	hubServer := NewServer(rpcPort, prometheusPort, longServer)
-
-	wg := errgroup.Group{}
-	wg.Go(func() error {
-		err = hubServer.Start()
-		if err != nil {
-			return utils.Wrap1(err)
-		}
-		return err
-	})
-
-	wg.Go(func() error {
-		return hubServer.LongConnServer.Run()
-	})
-
-	err = wg.Wait()
-	return err
+	hubServer := NewServer(rpcPort, longServer, conf)
+	netDone := make(chan error)
+	go func() {
+		err = hubServer.Start(ctx, index, conf)
+		netDone <- err
+	}()
+	return hubServer.LongConnServer.Run(netDone)
 }

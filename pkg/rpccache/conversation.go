@@ -1,19 +1,34 @@
+// Copyright © 2024 OpenIM. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package rpccache
 
 import (
 	"context"
-	pbconversation "github.com/OpenIMSDK/protocol/conversation"
-	"github.com/OpenIMSDK/tools/errs"
-	"github.com/OpenIMSDK/tools/log"
-	"github.com/openimsdk/localcache"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/cachekey"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/cache/cachekey"
+
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/open-im-server/v3/pkg/localcache"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
+	pbconversation "github.com/openimsdk/protocol/conversation"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/log"
 	"github.com/redis/go-redis/v9"
 )
 
-func NewConversationLocalCache(client rpcclient.ConversationRpcClient, cli redis.UniversalClient) *ConversationLocalCache {
-	lc := config.Config.LocalCache.Conversation
+func NewConversationLocalCache(client rpcclient.ConversationRpcClient, localCache *config.LocalCache, cli redis.UniversalClient) *ConversationLocalCache {
+	lc := localCache.Conversation
 	log.ZDebug(context.Background(), "ConversationLocalCache", "topic", lc.Topic, "slotNum", lc.SlotNum, "slotSize", lc.SlotSize, "enable", lc.Enable())
 	x := &ConversationLocalCache{
 		client: client,
@@ -56,7 +71,7 @@ func (c *ConversationLocalCache) GetConversation(ctx context.Context, userID, co
 	defer func() {
 		if err == nil {
 			log.ZDebug(ctx, "ConversationLocalCache GetConversation return", "value", val)
-		} else if !errs.ErrRecordNotFound.Is(err) {
+		} else {
 			log.ZError(ctx, "ConversationLocalCache GetConversation return", err)
 		}
 	}()
@@ -87,4 +102,26 @@ func (c *ConversationLocalCache) GetConversations(ctx context.Context, ownerUser
 		conversations = append(conversations, conversation)
 	}
 	return conversations, nil
+}
+
+func (c *ConversationLocalCache) getConversationNotReceiveMessageUserIDs(ctx context.Context, conversationID string) (*listMap[string], error) {
+	return localcache.AnyValue[*listMap[string]](c.local.Get(ctx, cachekey.GetConversationNotReceiveMessageUserIDsKey(conversationID), func(ctx context.Context) (any, error) {
+		return newListMap(c.client.GetConversationNotReceiveMessageUserIDs(ctx, conversationID))
+	}))
+}
+
+func (c *ConversationLocalCache) GetConversationNotReceiveMessageUserIDs(ctx context.Context, conversationID string) ([]string, error) {
+	res, err := c.getConversationNotReceiveMessageUserIDs(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	return res.List, nil
+}
+
+func (c *ConversationLocalCache) GetConversationNotReceiveMessageUserIDMap(ctx context.Context, conversationID string) (map[string]struct{}, error) {
+	res, err := c.getConversationNotReceiveMessageUserIDs(ctx, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	return res.Map, nil
 }

@@ -43,10 +43,16 @@ func TestCompressDecompress(t *testing.T) {
 
 		// compress
 		dest, err := compressor.CompressWithPool(src)
+		if err != nil {
+			t.Log(err)
+		}
 		assert.Equal(t, nil, err)
 
 		// decompress
 		res, err := compressor.DecompressWithPool(dest)
+		if err != nil {
+			t.Log(err)
+		}
 		assert.Equal(t, nil, err)
 
 		// check
@@ -66,10 +72,16 @@ func TestCompressDecompressWithConcurrency(t *testing.T) {
 
 			// compress
 			des, err := compressor.CompressWithPool(src)
+			if err != nil {
+				t.Log(err)
+			}
 			assert.Equal(t, nil, err)
 
 			// decompress
 			res, err := compressor.DecompressWithPool(des)
+			if err != nil {
+				t.Log(err)
+			}
 			assert.Equal(t, nil, err)
 
 			// check
@@ -117,6 +129,7 @@ func BenchmarkDecompress(b *testing.B) {
 
 	compressor := NewGzipCompressor()
 	comdata, err := compressor.Compress(src)
+
 	assert.Equal(b, nil, err)
 
 	for i := 0; i < b.N; i++ {

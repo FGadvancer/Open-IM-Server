@@ -15,10 +15,13 @@
 package msggateway
 
 import (
+	"encoding/json"
+	"github.com/openimsdk/tools/apiresp"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/openimsdk/tools/errs"
 )
 
 type LongConn interface {
@@ -72,7 +75,8 @@ func (d *GWebSocket) GenerateLongConn(w http.ResponseWriter, r *http.Request) er
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		return err
+		// The upgrader.Upgrade method usually returns enough error messages to diagnose problems that may occur during the upgrade
+		return errs.WrapMsg(err, "GenerateLongConn: WebSocket upgrade failed")
 	}
 	d.conn = conn
 	return nil
@@ -83,7 +87,7 @@ func (d *GWebSocket) WriteMessage(messageType int, message []byte) error {
 	return d.conn.WriteMessage(messageType, message)
 }
 
-//func (d *GWebSocket) setSendConn(sendConn *websocket.Conn) {
+// func (d *GWebSocket) setSendConn(sendConn *websocket.Conn) {
 //	d.sendConn = sendConn
 //}
 
@@ -96,22 +100,33 @@ func (d *GWebSocket) SetReadDeadline(timeout time.Duration) error {
 }
 
 func (d *GWebSocket) SetWriteDeadline(timeout time.Duration) error {
-	return d.conn.SetWriteDeadline(time.Now().Add(timeout))
+	if timeout <= 0 {
+		return errs.New("timeout must be greater than 0")
+	}
+
+	// TODO SetWriteDeadline Future add error handling
+	if err := d.conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+		return errs.WrapMsg(err, "GWebSocket.SetWriteDeadline failed")
+	}
+	return nil
 }
 
 func (d *GWebSocket) Dial(urlStr string, requestHeader http.Header) (*http.Response, error) {
 	conn, httpResp, err := websocket.DefaultDialer.Dial(urlStr, requestHeader)
-	if err == nil {
-		d.conn = conn
+	if err != nil {
+		return httpResp, errs.WrapMsg(err, "GWebSocket.Dial failed", "url", urlStr)
 	}
-	return httpResp, err
+	d.conn = conn
+	return httpResp, nil
 }
 
 func (d *GWebSocket) IsNil() bool {
-	if d.conn != nil {
-		return false
-	}
-	return true
+	return d.conn == nil
+	//
+	// if d.conn != nil {
+	// 	return false
+	// }
+	// return true
 }
 
 func (d *GWebSocket) SetConnNil() {
@@ -130,6 +145,34 @@ func (d *GWebSocket) SetPingHandler(handler PingPongHandler) {
 	d.conn.SetPingHandler(handler)
 }
 
-//func (d *GWebSocket) CheckSendConnDiffNow() bool {
-//	return d.conn == d.sendConn
-//}
+func (d *GWebSocket) RespondWithError(err error, w http.ResponseWriter, r *http.Request) error {
+	if err := d.GenerateLongConn(w, r); err != nil {
+		return err
+	}
+	data, err := json.Marshal(apiresp.ParseError(err))
+	if err != nil {
+		_ = d.Close()
+		return errs.WrapMsg(err, "json marshal failed")
+	}
+
+	if err := d.WriteMessage(MessageText, data); err != nil {
+		_ = d.Close()
+		return errs.WrapMsg(err, "WriteMessage failed")
+	}
+	_ = d.Close()
+	return nil
+}
+
+func (d *GWebSocket) RespondWithSuccess() error {
+	data, err := json.Marshal(apiresp.ParseError(nil))
+	if err != nil {
+		_ = d.Close()
+		return errs.WrapMsg(err, "json marshal failed")
+	}
+
+	if err := d.WriteMessage(MessageText, data); err != nil {
+		_ = d.Close()
+		return errs.WrapMsg(err, "WriteMessage failed")
+	}
+	return nil
+}

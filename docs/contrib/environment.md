@@ -305,13 +305,14 @@ Feel free to explore the MinIO documentation for more advanced configurations an
 
 This section involves setting up MongoDB, including its port, address, and credentials.
 
+
 | Parameter      | Example Value  | Description             |
 | -------------- | -------------- | ----------------------- |
 | MONGO_PORT     | "27017"        | Port used by MongoDB.   |
 | MONGO_ADDRESS  | [Generated IP] | IP address for MongoDB. |
 | MONGO_USERNAME | [User Defined] | Admin Username for MongoDB.   |
 | MONGO_PASSWORD | [User Defined] | Admin Password for MongoDB.   |
-| MONGO_OPENIM_PASSWORD | [User Defined] | OpenIM Username for MongoDB.   |
+| MONGO_OPENIM_USERNAME | [User Defined] | OpenIM Username for MongoDB.   |
 | MONGO_OPENIM_PASSWORD | [User Defined] | OpenIM Password for MongoDB.   |
 
 ###  2.8. <a name='TencentCloudCOSConfiguration'></a>Tencent Cloud COS Configuration
@@ -448,7 +449,7 @@ This section involves configuring the log settings, including storage location, 
 
 | Parameter                 | Example Value            | Description                       |
 | ------------------------- | ------------------------ | --------------------------------- |
-| LOG_STORAGE_LOCATION      | "${OPENIM_ROOT}/logs/" | Location for storing logs         |
+| LOG_STORAGE_LOCATION      | "${OPENIM_ROOT}/_output/logs/" | Location for storing logs         |
 | LOG_ROTATION_TIME         | "24"                     | Log rotation time (in hours)      |
 | LOG_REMAIN_ROTATION_COUNT | "2"                      | Number of log rotations to retain |
 | LOG_REMAIN_LOG_LEVEL      | "6"                      | Log level to retain               |
@@ -477,12 +478,6 @@ This section involves setting up additional configuration variables for Websocke
 | JPNS_MASTER_SECRET      | [User Defined]    | JPNS Master Secret               |
 | JPNS_PUSH_URL           | [User Defined]    | JPNS Push Notification URL       |
 | JPNS_PUSH_INTENT        | [User Defined]    | JPNS Push Intent                 |
-| MANAGER_USERID_1        | "openIM123456"    | Administrator ID 1               |
-| MANAGER_USERID_2        | "openIM654321"    | Administrator ID 2               |
-| MANAGER_USERID_3        | "openIMAdmin"     | Administrator ID 3               |
-| NICKNAME_1              | "system1"         | Nickname 1                       |
-| NICKNAME_2              | "system2"         | Nickname 2                       |
-| NICKNAME_3              | "system3"         | Nickname 3                       |
 | IM_ADMIN_USERID         | "imAdmin"         | IM Administrator ID              |
 | IM_ADMIN_NAME           | "imAdmin"         | IM Administrator Nickname        |
 | MULTILOGIN_POLICY       | "1"               | Multi-login Policy               |

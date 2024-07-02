@@ -18,16 +18,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/model"
+
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
-
-	pbfriend "github.com/OpenIMSDK/protocol/friend"
-	"github.com/OpenIMSDK/tools/mcontext"
-
 	"github.com/openimsdk/open-im-server/v3/pkg/common/convert"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/table/relation"
+	"github.com/openimsdk/protocol/relation"
+	"github.com/openimsdk/tools/mcontext"
 )
 
-func (s *friendServer) GetPaginationBlacks(ctx context.Context, req *pbfriend.GetPaginationBlacksReq) (resp *pbfriend.GetPaginationBlacksResp, err error) {
+func (s *friendServer) GetPaginationBlacks(ctx context.Context, req *relation.GetPaginationBlacksReq) (resp *relation.GetPaginationBlacksResp, err error) {
 	if err := s.userRpcClient.Access(ctx, req.UserID); err != nil {
 		return nil, err
 	}
@@ -35,7 +34,7 @@ func (s *friendServer) GetPaginationBlacks(ctx context.Context, req *pbfriend.Ge
 	if err != nil {
 		return nil, err
 	}
-	resp = &pbfriend.GetPaginationBlacksResp{}
+	resp = &relation.GetPaginationBlacksResp{}
 	resp.Blacks, err = convert.BlackDB2Pb(ctx, blacks, s.userRpcClient.GetUsersInfoMap)
 	if err != nil {
 		return nil, err
@@ -44,46 +43,50 @@ func (s *friendServer) GetPaginationBlacks(ctx context.Context, req *pbfriend.Ge
 	return resp, nil
 }
 
-func (s *friendServer) IsBlack(ctx context.Context, req *pbfriend.IsBlackReq) (*pbfriend.IsBlackResp, error) {
+func (s *friendServer) IsBlack(ctx context.Context, req *relation.IsBlackReq) (*relation.IsBlackResp, error) {
 	in1, in2, err := s.blackDatabase.CheckIn(ctx, req.UserID1, req.UserID2)
 	if err != nil {
 		return nil, err
 	}
-	resp := &pbfriend.IsBlackResp{}
+	resp := &relation.IsBlackResp{}
 	resp.InUser1Blacks = in1
 	resp.InUser2Blacks = in2
 	return resp, nil
 }
 
-func (s *friendServer) RemoveBlack(ctx context.Context, req *pbfriend.RemoveBlackReq) (*pbfriend.RemoveBlackResp, error) {
+func (s *friendServer) RemoveBlack(ctx context.Context, req *relation.RemoveBlackReq) (*relation.RemoveBlackResp, error) {
 	if err := s.userRpcClient.Access(ctx, req.OwnerUserID); err != nil {
 		return nil, err
 	}
-	if err := s.blackDatabase.Delete(ctx, []*relation.BlackModel{{OwnerUserID: req.OwnerUserID, BlockUserID: req.BlackUserID}}); err != nil {
+
+	if err := s.blackDatabase.Delete(ctx, []*model.Black{{OwnerUserID: req.OwnerUserID, BlockUserID: req.BlackUserID}}); err != nil {
 		return nil, err
 	}
+
 	s.notificationSender.BlackDeletedNotification(ctx, req)
-	return &pbfriend.RemoveBlackResp{}, nil
+
+	return &relation.RemoveBlackResp{}, nil
 }
 
-func (s *friendServer) AddBlack(ctx context.Context, req *pbfriend.AddBlackReq) (*pbfriend.AddBlackResp, error) {
-	if err := authverify.CheckAccessV3(ctx, req.OwnerUserID); err != nil {
+func (s *friendServer) AddBlack(ctx context.Context, req *relation.AddBlackReq) (*relation.AddBlackResp, error) {
+	if err := authverify.CheckAccessV3(ctx, req.OwnerUserID, s.config.Share.IMAdminUserID); err != nil {
 		return nil, err
 	}
 	_, err := s.userRpcClient.GetUsersInfo(ctx, []string{req.OwnerUserID, req.BlackUserID})
 	if err != nil {
 		return nil, err
 	}
-	black := relation.BlackModel{
+	black := model.Black{
 		OwnerUserID:    req.OwnerUserID,
 		BlockUserID:    req.BlackUserID,
 		OperatorUserID: mcontext.GetOpUserID(ctx),
 		CreateTime:     time.Now(),
 		Ex:             req.Ex,
 	}
-	if err := s.blackDatabase.Create(ctx, []*relation.BlackModel{&black}); err != nil {
+
+	if err := s.blackDatabase.Create(ctx, []*model.Black{&black}); err != nil {
 		return nil, err
 	}
 	s.notificationSender.BlackAddedNotification(ctx, req)
-	return &pbfriend.AddBlackResp{}, nil
+	return &relation.AddBlackResp{}, nil
 }

@@ -15,9 +15,11 @@
 package startrpc
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"log"
+	config2 "github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/utils/datautil"
+	"github.com/prometheus/client_golang/prometheus"
 	"net"
 	"net/http"
 	"os"
@@ -27,60 +29,58 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"golang.org/x/sync/errgroup"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
-
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	kdisc "github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
+	"github.com/openimsdk/tools/discovery"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/mw"
+	"github.com/openimsdk/tools/system/program"
+	"github.com/openimsdk/tools/utils/network"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	kdisc "github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister"
-
-	"github.com/OpenIMSDK/tools/discoveryregistry"
-	"github.com/OpenIMSDK/tools/mw"
-	"github.com/OpenIMSDK/tools/network"
-	"github.com/OpenIMSDK/tools/utils"
 )
 
 // Start rpc server.
-func Start(
-	rpcPort int,
-	rpcRegisterName string,
-	prometheusPort int,
-	rpcFn func(client discoveryregistry.SvcDiscoveryRegistry, server *grpc.Server) error,
-	options ...grpc.ServerOption,
-) error {
-	fmt.Printf("start %s server, port: %d, prometheusPort: %d, OpenIM version: %s\n",
-		rpcRegisterName, rpcPort, prometheusPort, config.Version)
-	listener, err := net.Listen(
-		"tcp",
-		net.JoinHostPort(network.GetListenIP(config.Config.Rpc.ListenIP), strconv.Itoa(rpcPort)),
-	)
+func Start[T any](ctx context.Context, discovery *config2.Discovery, prometheusConfig *config2.Prometheus, listenIP,
+	registerIP string, rpcPorts []int, index int, rpcRegisterName string, share *config2.Share, config T, rpcFn func(ctx context.Context,
+	config T, client discovery.SvcDiscoveryRegistry, server *grpc.Server) error, options ...grpc.ServerOption) error {
+
+	rpcPort, err := datautil.GetElemByIndex(rpcPorts, index)
 	if err != nil {
 		return err
 	}
 
-	defer listener.Close()
-	client, err := kdisc.NewDiscoveryRegister(config.Config.Envs.Discovery)
+	log.CInfo(ctx, "RPC server is initializing", "rpcRegisterName", rpcRegisterName, "rpcPort", rpcPort,
+		"prometheusPorts", prometheusConfig.Ports)
+	rpcTcpAddr := net.JoinHostPort(network.GetListenIP(listenIP), strconv.Itoa(rpcPort))
+	listener, err := net.Listen(
+		"tcp",
+		rpcTcpAddr,
+	)
 	if err != nil {
-		return utils.Wrap1(err)
+		return errs.WrapMsg(err, "listen err", "rpcTcpAddr", rpcTcpAddr)
+	}
+
+	defer listener.Close()
+	client, err := kdisc.NewDiscoveryRegister(discovery, share)
+	if err != nil {
+		return err
 	}
 
 	defer client.Close()
 	client.AddOption(mw.GrpcClient(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, "round_robin")))
-	registerIP, err := network.GetRpcRegisterIP(config.Config.Rpc.RegisterIP)
+	registerIP, err = network.GetRpcRegisterIP(registerIP)
 	if err != nil {
 		return err
 	}
 
 	var reg *prometheus.Registry
 	var metric *grpcprometheus.ServerMetrics
-	if config.Config.Prometheus.Enable {
-		cusMetrics := prommetrics.GetGrpcCusMetrics(rpcRegisterName)
+	if prometheusConfig.Enable {
+		cusMetrics := prommetrics.GetGrpcCusMetrics(rpcRegisterName, share)
 		reg, metric, _ = prommetrics.NewGrpcPromObj(cusMetrics)
 		options = append(options, mw.GrpcServer(), grpc.StreamInterceptor(metric.StreamServerInterceptor()),
 			grpc.UnaryInterceptor(metric.UnaryServerInterceptor()))
@@ -94,10 +94,11 @@ func Start(
 		once.Do(srv.GracefulStop)
 	}()
 
-	err = rpcFn(client, srv)
+	err = rpcFn(ctx, config, client, srv)
 	if err != nil {
-		return utils.Wrap1(err)
+		return err
 	}
+
 	err = client.Register(
 		rpcRegisterName,
 		registerIP,
@@ -105,48 +106,73 @@ func Start(
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		return utils.Wrap1(err)
+		return err
 	}
-
-	var wg errgroup.Group
-
-	wg.Go(func() error {
-		if config.Config.Prometheus.Enable && prometheusPort != 0 {
-			metric.InitializeMetrics(srv)
-			// Create a HTTP server for prometheus.
-			httpServer := &http.Server{Handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}), Addr: fmt.Sprintf("0.0.0.0:%d", prometheusPort)}
-			if err := httpServer.ListenAndServe(); err != nil {
-				log.Fatal("Unable to start a http server.", err)
-			}
-		}
-		return nil
-	})
-
-	wg.Go(func() error {
-		return utils.Wrap1(srv.Serve(listener))
-	})
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-sigs
 
 	var (
-		done = make(chan struct{}, 1)
-		gerr error
+		netDone    = make(chan struct{}, 2)
+		netErr     error
+		httpServer *http.Server
 	)
-
-	go func() {
-		once.Do(srv.GracefulStop)
-		gerr = wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return gerr
-
-	case <-time.After(15 * time.Second):
-		return utils.Wrap1(errors.New("timeout exit"))
+	if prometheusConfig.Enable {
+		go func() {
+			prometheusPort, err := datautil.GetElemByIndex(prometheusConfig.Ports, index)
+			if err != nil {
+				netErr = err
+				netDone <- struct{}{}
+				return
+			}
+			metric.InitializeMetrics(srv)
+			// Create a HTTP server for prometheus.
+			httpServer = &http.Server{Handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}), Addr: fmt.Sprintf("0.0.0.0:%d", prometheusPort)}
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				netErr = errs.WrapMsg(err, "prometheus start err", httpServer.Addr)
+				netDone <- struct{}{}
+			}
+		}()
 	}
 
+	go func() {
+		err := srv.Serve(listener)
+		if err != nil {
+			netErr = errs.WrapMsg(err, "rpc start err: ", rpcTcpAddr)
+			netDone <- struct{}{}
+		}
+	}()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	select {
+	case <-sigs:
+		program.SIGTERMExit()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := gracefulStopWithCtx(ctx, srv.GracefulStop); err != nil {
+			return err
+		}
+		ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		err := httpServer.Shutdown(ctx)
+		if err != nil {
+			return errs.WrapMsg(err, "shutdown err")
+		}
+		return nil
+	case <-netDone:
+		close(netDone)
+		return netErr
+	}
+}
+
+func gracefulStopWithCtx(ctx context.Context, f func()) error {
+	done := make(chan struct{}, 1)
+	go func() {
+		f()
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return errs.New("timeout, ctx graceful stop")
+	case <-done:
+		return nil
+	}
 }

@@ -16,47 +16,39 @@ package msggateway
 
 import (
 	"context"
-
-	"google.golang.org/grpc"
-
-	"github.com/OpenIMSDK/protocol/constant"
-	"github.com/OpenIMSDK/protocol/msggateway"
-	"github.com/OpenIMSDK/tools/discoveryregistry"
-	"github.com/OpenIMSDK/tools/errs"
-	"github.com/OpenIMSDK/tools/log"
-	"github.com/OpenIMSDK/tools/mcontext"
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/cache"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/servererrs"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/startrpc"
+	"github.com/openimsdk/protocol/constant"
+	"github.com/openimsdk/protocol/msggateway"
+	"github.com/openimsdk/tools/discovery"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/mcontext"
+	"google.golang.org/grpc"
 )
 
-func (s *Server) InitServer(disCov discoveryregistry.SvcDiscoveryRegistry, server *grpc.Server) error {
-	rdb, err := cache.NewRedis()
-	if err != nil {
-		return err
-	}
-
-	msgModel := cache.NewMsgCacheModel(rdb)
-	s.LongConnServer.SetDiscoveryRegistry(disCov)
-	s.LongConnServer.SetCacheHandler(msgModel)
+func (s *Server) InitServer(ctx context.Context, config *Config, disCov discovery.SvcDiscoveryRegistry, server *grpc.Server) error {
+	s.LongConnServer.SetDiscoveryRegistry(disCov, config)
 	msggateway.RegisterMsgGatewayServer(server, s)
 	return nil
 }
 
-func (s *Server) Start() error {
-	return startrpc.Start(
-		s.rpcPort,
-		config.Config.RpcRegisterName.OpenImMessageGatewayName,
-		s.prometheusPort,
+func (s *Server) Start(ctx context.Context, index int, conf *Config) error {
+	return startrpc.Start(ctx, &conf.Discovery, &conf.MsgGateway.Prometheus, conf.MsgGateway.ListenIP,
+		conf.MsgGateway.RPC.RegisterIP,
+		conf.MsgGateway.RPC.Ports, index,
+		conf.Share.RpcRegisterName.MessageGateway,
+		&conf.Share,
+		conf,
 		s.InitServer,
 	)
 }
 
 type Server struct {
 	rpcPort        int
-	prometheusPort int
 	LongConnServer LongConnServer
+	config         *Config
 	pushTerminal   map[int]struct{}
 }
 
@@ -64,12 +56,12 @@ func (s *Server) SetLongConnServer(LongConnServer LongConnServer) {
 	s.LongConnServer = LongConnServer
 }
 
-func NewServer(rpcPort int, proPort int, longConnServer LongConnServer) *Server {
+func NewServer(rpcPort int, longConnServer LongConnServer, conf *Config) *Server {
 	s := &Server{
 		rpcPort:        rpcPort,
-		prometheusPort: proPort,
 		LongConnServer: longConnServer,
 		pushTerminal:   make(map[int]struct{}),
+		config:         conf,
 	}
 	s.pushTerminal[constant.IOSPlatformID] = struct{}{}
 	s.pushTerminal[constant.AndroidPlatformID] = struct{}{}
@@ -87,8 +79,8 @@ func (s *Server) GetUsersOnlineStatus(
 	ctx context.Context,
 	req *msggateway.GetUsersOnlineStatusReq,
 ) (*msggateway.GetUsersOnlineStatusResp, error) {
-	if !authverify.IsAppManagerUid(ctx) {
-		return nil, errs.ErrNoPermission.Wrap("only app manager")
+	if !authverify.IsAppManagerUid(ctx, s.config.Share.IMAdminUserID) {
+		return nil, errs.ErrNoPermission.WrapMsg("only app manager")
 	}
 	var resp msggateway.GetUsersOnlineStatusResp
 	for _, userID := range req.UserIDs {
@@ -120,11 +112,9 @@ func (s *Server) GetUsersOnlineStatus(
 	return &resp, nil
 }
 
-func (s *Server) OnlineBatchPushOneMsg(
-	ctx context.Context,
-	req *msggateway.OnlineBatchPushOneMsgReq,
-) (*msggateway.OnlineBatchPushOneMsgResp, error) {
-	panic("implement me")
+func (s *Server) OnlineBatchPushOneMsg(ctx context.Context, req *msggateway.OnlineBatchPushOneMsgReq) (*msggateway.OnlineBatchPushOneMsgResp, error) {
+	// todo implement
+	return nil, nil
 }
 
 func (s *Server) SuperGroupOnlineBatchPushOneMsg(ctx context.Context, req *msggateway.OnlineBatchPushOneMsgReq,
@@ -150,13 +140,13 @@ func (s *Server) SuperGroupOnlineBatchPushOneMsg(ctx context.Context, req *msgga
 			}
 
 			userPlatform := &msggateway.SingleMsgToUserPlatform{
-				PlatFormID: int32(client.PlatformID),
+				RecvPlatFormID: int32(client.PlatformID),
 			}
 			if !client.IsBackground ||
 				(client.IsBackground && client.PlatformID != constant.IOSPlatformID) {
 				err := client.PushMessage(ctx, req.MsgData)
 				if err != nil {
-					userPlatform.ResultCode = int64(errs.ErrPushMsgErr.Code())
+					userPlatform.ResultCode = int64(servererrs.ErrPushMsgErr.Code())
 					resp = append(resp, userPlatform)
 				} else {
 					if _, ok := s.pushTerminal[client.PlatformID]; ok {
@@ -165,7 +155,7 @@ func (s *Server) SuperGroupOnlineBatchPushOneMsg(ctx context.Context, req *msgga
 					}
 				}
 			} else {
-				userPlatform.ResultCode = int64(errs.ErrIOSBackgroundPushErr.Code())
+				userPlatform.ResultCode = int64(servererrs.ErrIOSBackgroundPushErr.Code())
 				resp = append(resp, userPlatform)
 			}
 		}
@@ -185,7 +175,7 @@ func (s *Server) KickUserOffline(
 	for _, v := range req.KickUserIDList {
 		clients, _, ok := s.LongConnServer.GetUserPlatformCons(v, int(req.PlatformID))
 		if !ok {
-			log.ZInfo(ctx, "conn not exist", "userID", v, "platformID", req.PlatformID)
+			log.ZDebug(ctx, "conn not exist", "userID", v, "platformID", req.PlatformID)
 			continue
 		}
 
@@ -201,10 +191,7 @@ func (s *Server) KickUserOffline(
 	return &msggateway.KickUserOfflineResp{}, nil
 }
 
-func (s *Server) MultiTerminalLoginCheck(
-	ctx context.Context,
-	req *msggateway.MultiTerminalLoginCheckReq,
-) (*msggateway.MultiTerminalLoginCheckResp, error) {
+func (s *Server) MultiTerminalLoginCheck(ctx context.Context, req *msggateway.MultiTerminalLoginCheckReq) (*msggateway.MultiTerminalLoginCheckResp, error) {
 	if oldClients, userOK, clientOK := s.LongConnServer.GetUserPlatformCons(req.UserID, int(req.PlatformID)); userOK {
 		tempUserCtx := newTempContext()
 		tempUserCtx.SetToken(req.Token)

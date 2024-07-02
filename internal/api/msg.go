@@ -15,41 +15,45 @@
 package api
 
 import (
-	"github.com/OpenIMSDK/protocol/constant"
-	"github.com/OpenIMSDK/protocol/msg"
-	"github.com/OpenIMSDK/protocol/sdkws"
-	"github.com/OpenIMSDK/tools/a2r"
-	"github.com/OpenIMSDK/tools/apiresp"
-	"github.com/OpenIMSDK/tools/errs"
-	"github.com/OpenIMSDK/tools/log"
-	"github.com/OpenIMSDK/tools/mcontext"
-	"github.com/OpenIMSDK/tools/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
-
+	"github.com/openimsdk/open-im-server/v3/pkg/apistruct"
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/apistruct"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
+	"github.com/openimsdk/protocol/constant"
+	"github.com/openimsdk/protocol/msg"
+	"github.com/openimsdk/protocol/sdkws"
+	"github.com/openimsdk/tools/a2r"
+	"github.com/openimsdk/tools/apiresp"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/mcontext"
+	"github.com/openimsdk/tools/utils/datautil"
+	"github.com/openimsdk/tools/utils/idutil"
+	"github.com/openimsdk/tools/utils/jsonutil"
+	"github.com/openimsdk/tools/utils/timeutil"
 )
 
 type MessageApi struct {
 	*rpcclient.Message
 	validate      *validator.Validate
 	userRpcClient *rpcclient.UserRpcClient
+	imAdminUserID []string
 }
 
-func NewMessageApi(msgRpcClient *rpcclient.Message, userRpcClient *rpcclient.User) MessageApi {
-	return MessageApi{Message: msgRpcClient, validate: validator.New(), userRpcClient: rpcclient.NewUserRpcClientByUser(userRpcClient)}
+func NewMessageApi(msgRpcClient *rpcclient.Message, userRpcClient *rpcclient.User,
+	imAdminUserID []string) MessageApi {
+	return MessageApi{Message: msgRpcClient, validate: validator.New(),
+		userRpcClient: rpcclient.NewUserRpcClientByUser(userRpcClient), imAdminUserID: imAdminUserID}
 }
 
 func (MessageApi) SetOptions(options map[string]bool, value bool) {
-	utils.SetSwitchFromOptions(options, constant.IsHistory, value)
-	utils.SetSwitchFromOptions(options, constant.IsPersistent, value)
-	utils.SetSwitchFromOptions(options, constant.IsSenderSync, value)
-	utils.SetSwitchFromOptions(options, constant.IsConversationUpdate, value)
+	datautil.SetSwitchFromOptions(options, constant.IsHistory, value)
+	datautil.SetSwitchFromOptions(options, constant.IsPersistent, value)
+	datautil.SetSwitchFromOptions(options, constant.IsSenderSync, value)
+	datautil.SetSwitchFromOptions(options, constant.IsConversationUpdate, value)
 }
 
 func (m MessageApi) newUserSendMsgReq(_ *gin.Context, params *apistruct.SendMsg) *msg.SendMsgReq {
@@ -58,8 +62,8 @@ func (m MessageApi) newUserSendMsgReq(_ *gin.Context, params *apistruct.SendMsg)
 	switch params.ContentType {
 	case constant.OANotification:
 		notification := sdkws.NotificationElem{}
-		notification.Detail = utils.StructToJsonString(params.Content)
-		newContent = utils.StructToJsonString(&notification)
+		notification.Detail = jsonutil.StructToJsonString(params.Content)
+		newContent = jsonutil.StructToJsonString(&notification)
 	case constant.Text:
 		fallthrough
 	case constant.Picture:
@@ -73,19 +77,19 @@ func (m MessageApi) newUserSendMsgReq(_ *gin.Context, params *apistruct.SendMsg)
 	case constant.File:
 		fallthrough
 	default:
-		newContent = utils.StructToJsonString(params.Content)
+		newContent = jsonutil.StructToJsonString(params.Content)
 	}
 	if params.IsOnlineOnly {
 		m.SetOptions(options, false)
 	}
 	if params.NotOfflinePush {
-		utils.SetSwitchFromOptions(options, constant.IsOfflinePush, false)
+		datautil.SetSwitchFromOptions(options, constant.IsOfflinePush, false)
 	}
 	pbData := msg.SendMsgReq{
 		MsgData: &sdkws.MsgData{
 			SendID:           params.SendID,
 			GroupID:          params.GroupID,
-			ClientMsgID:      utils.GetMsgID(params.SendID),
+			ClientMsgID:      idutil.GetMsgIDByMD5(params.SendID),
 			SenderPlatformID: params.SenderPlatformID,
 			SenderNickname:   params.SenderNickname,
 			SenderFaceURL:    params.SenderFaceURL,
@@ -93,10 +97,11 @@ func (m MessageApi) newUserSendMsgReq(_ *gin.Context, params *apistruct.SendMsg)
 			MsgFrom:          constant.SysMsgType,
 			ContentType:      params.ContentType,
 			Content:          []byte(newContent),
-			CreateTime:       utils.GetCurrentTimestampByMill(),
+			CreateTime:       timeutil.GetCurrentTimestampByMill(),
 			SendTime:         params.SendTime,
 			Options:          options,
 			OfflinePushInfo:  params.OfflinePushInfo,
+			Ex:               params.Ex,
 		},
 	}
 	return &pbData
@@ -175,14 +180,14 @@ func (m *MessageApi) getSendMsgReq(c *gin.Context, req apistruct.SendMsg) (sendM
 			return nil, err
 		}
 	default:
-		return nil, errs.ErrArgs.WithDetail("not support err contentType")
+		return nil, errs.WrapMsg(errs.ErrArgs, "unsupported content type", "contentType", req.ContentType)
 	}
 	if err := mapstructure.WeakDecode(req.Content, &data); err != nil {
-		return nil, err
+		return nil, errs.WrapMsg(err, "failed to decode message content")
 	}
-	log.ZDebug(c, "getSendMsgReq", "req", req.Content)
+	log.ZDebug(c, "getSendMsgReq", "decodedContent", data)
 	if err := m.validate.Struct(data); err != nil {
-		return nil, err
+		return nil, errs.WrapMsg(err, "validation error")
 	}
 	return m.newUserSendMsgReq(c, &req), nil
 }
@@ -200,9 +205,9 @@ func (m *MessageApi) SendMessage(c *gin.Context) {
 	}
 
 	// Check if the user has the app manager role.
-	if !authverify.IsAppManagerUid(c) {
+	if !authverify.IsAppManagerUid(c, m.imAdminUserID) {
 		// Respond with a permission error if the user is not an app manager.
-		apiresp.GinError(c, errs.ErrNoPermission.Wrap("only app manager can send message"))
+		apiresp.GinError(c, errs.ErrNoPermission.WrapMsg("only app manager can send message"))
 		return
 	}
 
@@ -210,7 +215,6 @@ func (m *MessageApi) SendMessage(c *gin.Context) {
 	sendMsgReq, err := m.getSendMsgReq(c, req.SendMsg)
 	if err != nil {
 		// Log and respond with an error if preparation fails.
-		log.ZError(c, "decodeData failed", err)
 		apiresp.GinError(c, err)
 		return
 	}
@@ -218,29 +222,26 @@ func (m *MessageApi) SendMessage(c *gin.Context) {
 	// Set the receiver ID in the message data.
 	sendMsgReq.MsgData.RecvID = req.RecvID
 
-	// Declare a variable to store the message sending status.
-	var status int
-
 	// Attempt to send the message using the client.
 	respPb, err := m.Client.SendMsg(c, sendMsgReq)
 	if err != nil {
 		// Set the status to failed and respond with an error if sending fails.
-		status = constant.MsgSendFailed
-		log.ZError(c, "send message err", err)
 		apiresp.GinError(c, err)
 		return
 	}
 
 	// Set the status to successful if the message is sent.
-	status = constant.MsgSendSuccessed
+	var status int = constant.MsgSendSuccessed
 
 	// Attempt to update the message sending status in the system.
 	_, err = m.Client.SetSendMsgStatus(c, &msg.SetSendMsgStatusReq{
 		Status: int32(status),
 	})
+
 	if err != nil {
 		// Log the error if updating the status fails.
-		log.ZError(c, "SetSendMsgStatus failed", err)
+		apiresp.GinError(c, err)
+		return
 	}
 
 	// Respond with a success message and the response payload.
@@ -259,16 +260,16 @@ func (m *MessageApi) SendBusinessNotification(c *gin.Context) {
 		return
 	}
 
-	if !authverify.IsAppManagerUid(c) {
-		apiresp.GinError(c, errs.ErrNoPermission.Wrap("only app manager can send message"))
+	if !authverify.IsAppManagerUid(c, m.imAdminUserID) {
+		apiresp.GinError(c, errs.ErrNoPermission.WrapMsg("only app manager can send message"))
 		return
 	}
 	sendMsgReq := msg.SendMsgReq{
 		MsgData: &sdkws.MsgData{
 			SendID: req.SendUserID,
 			RecvID: req.RecvUserID,
-			Content: []byte(utils.StructToJsonString(&sdkws.NotificationElem{
-				Detail: utils.StructToJsonString(&struct {
+			Content: []byte(jsonutil.StructToJsonString(&sdkws.NotificationElem{
+				Detail: jsonutil.StructToJsonString(&struct {
 					Key  string `json:"key"`
 					Data string `json:"data"`
 				}{Key: req.Key, Data: req.Data}),
@@ -276,9 +277,9 @@ func (m *MessageApi) SendBusinessNotification(c *gin.Context) {
 			MsgFrom:     constant.SysMsgType,
 			ContentType: constant.BusinessNotification,
 			SessionType: constant.SingleChatType,
-			CreateTime:  utils.GetCurrentTimestampByMill(),
-			ClientMsgID: utils.GetMsgID(mcontext.GetOpUserID(c)),
-			Options: config.GetOptionsByNotification(config.NotificationConf{
+			CreateTime:  timeutil.GetCurrentTimestampByMill(),
+			ClientMsgID: idutil.GetMsgIDByMD5(mcontext.GetOpUserID(c)),
+			Options: config.GetOptionsByNotification(config.NotificationConfig{
 				IsSendMsg:        false,
 				ReliabilityLevel: 1,
 				UnreadCount:      false,
@@ -299,25 +300,21 @@ func (m *MessageApi) BatchSendMsg(c *gin.Context) {
 		resp apistruct.BatchSendMsgResp
 	)
 	if err := c.BindJSON(&req); err != nil {
-		log.ZError(c, "BatchSendMsg BindJSON failed", err)
 		apiresp.GinError(c, errs.ErrArgs.WithDetail(err.Error()).Wrap())
 		return
 	}
-	log.ZInfo(c, "BatchSendMsg", "req", req)
-	if err := authverify.CheckAdmin(c); err != nil {
-		apiresp.GinError(c, errs.ErrNoPermission.Wrap("only app manager can send message"))
+	if err := authverify.CheckAdmin(c, m.imAdminUserID); err != nil {
+		apiresp.GinError(c, errs.ErrNoPermission.WrapMsg("only app manager can send message"))
 		return
 	}
 
 	var recvIDs []string
-	var err error
 	if req.IsSendAll {
 		pageNumber := 1
 		showNumber := 500
 		for {
 			recvIDsPart, err := m.userRpcClient.GetAllUserIDs(c, int32(pageNumber), int32(showNumber))
 			if err != nil {
-				log.ZError(c, "GetAllUserIDs failed", err)
 				apiresp.GinError(c, err)
 				return
 			}
@@ -333,7 +330,6 @@ func (m *MessageApi) BatchSendMsg(c *gin.Context) {
 	log.ZDebug(c, "BatchSendMsg nums", "nums ", len(recvIDs))
 	sendMsgReq, err := m.getSendMsgReq(c, req.SendMsg)
 	if err != nil {
-		log.ZError(c, "decodeData failed", err)
 		apiresp.GinError(c, err)
 		return
 	}

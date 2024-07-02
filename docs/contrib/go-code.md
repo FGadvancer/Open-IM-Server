@@ -26,19 +26,19 @@ jwt "github.com/dgrijalva/jwt-go/v4"
 
 ```go
 import (
-// go standard package
-"fmt"
-
-// third party package
-"github.com/jinzhu/gorm"
-"github.com/spf13/cobra"
-"github.com/spf13/viper"
-
-// Anonymous packages are grouped separately, and anonymous package references are explained
-// import mysql driver
-_ "github.com/jinzhu/gorm/dialects/mysql"
-
-// inner package
+  // go standard package
+  "fmt"
+  
+  // third party package
+  "github.com/jinzhu/gorm"
+  "github.com/spf13/cobra"
+  "github.com/spf13/viper"
+  
+  // Anonymous packages are grouped separately, and anonymous package references are explained
+  // import mysql driver
+  _ "github.com/jinzhu/gorm/dialects/mysql"
+  
+  // inner package
 )
 ```
 
@@ -48,33 +48,33 @@ When multiple variables need to be used in a function, the `var` declaration can
 
 ```go
 var (
-Width int
-Height int
+  Width int
+  Height int
 )
 ```
 
 - When initializing a structure reference, please use `&T{}` instead of `new(T)` to make it consistent with structure initialization.
 
 ```go
-// bad
-sptr := new(T)
-sptr.Name = "bar"
-
-// good
-sptr := &T{Name: "bar"}
+  // bad
+  sptr := new(T)
+  sptr.Name = "bar"
+  
+  // good
+  sptr := &T{Name: "bar"}
 ```
 
 - The struct declaration and initialization format takes multiple lines and is defined as follows.
 
 ```go
-type User struct{
-     Username string
-     Email string
-}
+  type User struct{
+       Username string
+       Email string
+  }
 
-user := User{
-Username: "belm",
-Email: "nosbelm@qq.com",
+  user := User{
+  Username: "belm",
+  Email: "nosbelm@qq.com",
 }
 ```
 
@@ -115,21 +115,82 @@ var s = F()
 func F() string { return "A" }
 ```
 
-- Use `_` as a prefix for unexported top-level constants and variables.
+- This example emphasizes using PascalCase for exported constants and camelCase for unexported ones, avoiding all caps and underscores.
 
 ```go
 // bad
 const (
-   defaultHost = "127.0.0.1"
-   defaultPort = 8080
+    MAX_COUNT = 100
+    timeout = 30
 )
 
 // good
 const (
-   _defaultHost = "127.0.0.1"
-   _defaultPort = 8080
+    MaxCount = 100  // Exported constants should use PascalCase.
+    defaultTimeout = 30  // Unexported constants should use camelCase.
 )
 ```
+
+- Grouping related constants enhances organization and readability, especially when there are multiple constants related to a particular feature or configuration.
+
+```go
+// bad
+const apiVersion = "v1"
+const retryInterval = 5
+
+// good
+const (
+    ApiVersion    = "v1"  // Group related constants together for better organization.
+    RetryInterval = 5
+)
+```
+
+- The "good" practice utilizes iota for a clear, concise, and auto-incrementing way to define enumerations, reducing the potential for errors and improving maintainability.
+
+```go
+// bad
+const (
+    StatusActive   = 0
+    StatusInactive = 1
+    StatusUnknown  = 2
+)
+
+// good
+const (
+    StatusActive = iota  // Use iota for simple and efficient constant enumerations.
+    StatusInactive
+    StatusUnknown
+)
+```
+
+- Specifying types explicitly improves clarity, especially when the purpose or type of a constant might not be immediately obvious. Additionally, adding comments to exported constants or those whose purpose isn't clear from the name alone can greatly aid in understanding the code.
+
+```go
+// bad
+const serverAddress = "localhost:8080"
+const debugMode = 1  // Is this supposed to be a boolean or an int?
+
+// good
+const ServerAddress string = "localhost:8080"  // Specify type for clarity.
+// DebugMode indicates if the application should run in debug mode (true for debug mode).
+const DebugMode bool = true
+```
+
+- By defining a contextKey type and making userIDKey of this type, you avoid potential collisions with other context keys. This approach leverages Go's type system to provide compile-time checks against misuse.
+
+```go
+// bad
+const userIDKey = "userID"
+
+// In this example, userIDKey is a string type, which can lead to conflicts or accidental misuse because string keys are prone to typos and collisions in a global namespace.
+
+
+// good
+type contextKey string
+
+const userIDKey contextKey = "userID"
+```
+
 
 - Embedded types (such as mutexes) should be at the top of the field list within the struct, and there must be a blank line separating embedded fields from regular fields.
 
@@ -217,20 +278,20 @@ if err != nil {
 // bad
 v, err := foo()
 if err != nil || v == nil {
-// error handling
-return err
+  // error handling
+  return err
 }
 
 //good
 v, err := foo()
 if err != nil {
-// error handling
-return err
+  // error handling
+  return err
 }
 
 if v == nil {
-// error handling
-return errors. New("invalid value v")
+  // error handling
+  return errors. New("invalid value v")
 }
 ```
 
@@ -239,13 +300,14 @@ return errors. New("invalid value v")
 ```go
 v, err := f()
 if err != nil {
-     // error handling
-     return // or continue.
+  // error handling
+  return // or continue.
 }
 ```
 
 - Bug description suggestions
 - Error descriptions start with a lowercase letter and do not end with punctuation, for example:
+
 ```go
 // bad
 errors.New("Redis connection failed")
@@ -254,6 +316,7 @@ errors.New("redis connection failed.")
 // good
 errors.New("redis connection failed")
 ```
+
 - Tell users what they can do, not what they can't.
 - When declaring a requirement, use must instead of should. For example, `must be greater than 0, must match regex '[a-z]+'`.
 - When declaring that a format is incorrect, use must not. For example, `must not contain`.
@@ -264,13 +327,59 @@ errors.New("redis connection failed")
 - When specifying ranges of numbers, use inclusive ranges whenever possible.
 - Go 1.13 or above is recommended, and the error generation method is `fmt.Errorf("module xxx: %w", err)`.
 
-### 1.4 panic processing
+### 1.4 Panic Processing
 
-- Panic is prohibited in business logic processing.
-- In the main package, panic is only used when the program is completely inoperable, for example, the file cannot be opened, the database cannot be connected, and the program cannot run normally.
-- In the main package, use `log.Fatal` to record errors, so that the program can be terminated by the log, or the exception thrown by the panic can be recorded in the log file, which is convenient for troubleshooting.
-- An exportable interface must not panic.
-- It is recommended to use error instead of panic to convey errors in the package.
+The use of `panic` should be carefully controlled in Go applications to ensure program stability and predictable error handling. Following are revised guidelines emphasizing the restriction on using `panic` and promoting alternative strategies for error handling and program termination.
+
+- **Prohibited in Business Logic:** Using `panic` within business logic processing is strictly prohibited. Business logic should handle errors gracefully and use error returns to propagate issues up the call stack.
+
+- **Restricted Use in Main Package:** In the main package, the use of `panic` should be reserved for situations where the program is entirely inoperable, such as failure to open essential files, inability to connect to the database, or other critical startup issues. Even in these scenarios, prefer using structured error handling to terminate the program.
+
+- **Prohibition on Exportable Interfaces:** Exportable interfaces must not invoke `panic`. They should handle errors gracefully and return errors as part of their contract.
+
+- **Prefer Errors Over Panic:** It is recommended to use error returns instead of panic to convey errors within a package. This approach promotes error handling that integrates smoothly with Go's error handling idioms.
+
+#### Alternative to Panic: Structured Program Termination
+
+To enforce these guidelines, consider implementing structured functions to terminate the program gracefully in the face of unrecoverable errors, while providing clear error messages. Here are two recommended functions:
+
+```go
+// ExitWithError logs an error message and exits the program with a non-zero status.
+func ExitWithError(err error) {
+	progName := filepath.Base(os.Args[0])
+	fmt.Fprintf(os.Stderr, "%s exit -1: %+v\n", progName, err)
+	os.Exit(-1)
+}
+
+// SIGTERMExit logs a warning message when the program receives a SIGTERM signal and exits with status 0.
+func SIGTERMExit() {
+	progName := filepath.Base(os.Args[0])
+	fmt.Fprintf(os.Stderr, "Warning %s receive process terminal SIGTERM exit 0\n", progName)
+}
+```
+
+#### Example Usage:
+
+```go
+import (
+	_ "net/webhook/pprof"
+
+	"github.com/openimsdk/open-im-server/v3/pkg/common/cmd"
+	util "github.com/openimsdk/open-im-server/v3/pkg/util/genutil"
+)
+
+func main() {
+	apiCmd := cmd.NewApiCmd()
+	apiCmd.AddPortFlag()
+	apiCmd.AddPrometheusPortFlag()
+	if err := apiCmd.Execute(); err != nil {
+		util.ExitWithError(err)
+	}
+}
+```
+
+In this example, `ExitWithError` is used to terminate the program when an unrecoverable error occurs, providing a clear error message to stderr and exiting with a non-zero status. This approach ensures that critical errors are logged and the program exits in a controlled manner, facilitating troubleshooting and maintaining the stability of the application.
+
 
 ### 1.5 Unit Tests
 
@@ -307,27 +416,31 @@ The naming convention is a very important part of the code specification. A unif
 - Don't use broad, meaningless package names like common, util, shared or lib.
 - The package name should be simple and clear, such as net, time, log.
 
-### 2.2 Function Naming
 
-- The function name is in camel case, and the first letter is uppercase or lowercase according to the access control decision,For example: `MixedCaps` or `mixedCaps`.
-- Code automatically generated by code generation tools (such as `xxxx.pb.go`) and underscores used to group related test cases (such as `TestMyFunction_WhatIsBeingTested`) exclude this rule.
+### 2.2 Function Naming Conventions
 
-In accordance with the naming conventions adopted by OpenIM and drawing reference from the Google Naming Conventions as per the guidelines available at https://google.github.io/styleguide/go/, the following expectations for naming practices within the project are set forth:
+Function names should adhere to the following guidelines, inspired by OpenIM’s standards and Google’s Go Style Guide:
 
-1. **File Names:**
-   + Both hyphens (`-`) and underscores (`_`) are permitted when naming files.
-   + A preference is established for the use of underscores (`_`), suggesting it as the best practice in general scenarios.
-2. **Script and Markdown Files:**
-   + For shell scripts (bash files) and Markdown (`.md`) documents, the use of hyphens (`-`) is recommended.
-   + This recommendation is based on the improved searchability and compatibility in web browsers when hyphens are used in names.
-3. **Directories:**
-   + A consistent approach is mandated for naming directories, exclusively using hyphens (`-`) to separate words within directory names.
+- Use camel case for function names. Start with an uppercase letter for public functions (`MixedCaps`) and a lowercase letter for private functions (`mixedCaps`).
+- Exceptions to this rule include code automatically generated by tools (e.g., `xxxx.pb.go`) and test functions that use underscores for clarity (e.g., `TestMyFunction_WhatIsBeingTested`).
+
+### 2.3 File and Directory Naming Practices
+
+To maintain consistency and readability across the OpenIM project, observe the following naming practices:
+
+**File Names:**
+- Use underscores (`_`) as the default separator in filenames, keeping them short and descriptive.
+- Both hyphens (`-`) and underscores (`_`) are allowed, but underscores are preferred for general use.
+
+**Script and Markdown Files:**
+- Prefer hyphens (`-`) for shell scripts and Markdown (`.md`) files to enhance searchability and web compatibility.
+
+**Directories:**
+- Name directories with hyphens (`-`) exclusively to separate words, ensuring consistency and readability.
+
+Remember to keep filenames lowercase and use meaningful, concise identifiers to facilitate better organization and navigation within the project.
 
 
-### 2.3 File Naming
-
-- Keep the filename short and meaningful.
-- Filenames should be lowercase and use underscores to separate words.
 
 ### 2.4 Structure Naming
 
@@ -359,18 +472,18 @@ u := User{
 
 For example:
 
-```
+```go
 // Seeking to an offset before the start of the file is an error.
 // Seeking to any positive offset is legal, but the behavior of subsequent
 // I/O operations on the underlying object are implementation-dependent.
 type Seeker interface {
-Seek(offset int64, whence int) (int64, error)
+  Seek(offset int64, whence int) (int64, error)
 }
 
 // ReadWriter is the interface that groups the basic Read and Write methods.
 type ReadWriter interface {
-reader
-Writer
+  reader
+  Writer
 }
 ```
 
@@ -386,7 +499,7 @@ Writer
 
 Some common nouns are listed below.
 
-```
+```go
 // A GonicMapper that contains a list of common initialisms taken from golang/lint
 var LintGonicMapper = GonicMapper{
      "API": true,
@@ -428,19 +541,24 @@ var LintGonicMapper = GonicMapper{
 - If the variable type is bool, the name should start with Has, Is, Can or Allow, for example:
 
 ```go
-var has Conflict bool
+var hasConflict bool
 var isExist bool
-var can Manage bool
+var canManage bool
 var allowGitHook bool
 ```
 
 - Local variables should be as short as possible, for example, use buf to refer to buffer, and use i to refer to index.
 - The code automatically generated by the code generation tool can exclude this rule (such as the Id in `xxx.pb.go`)
 
-### 2.7 Constant naming
+### 2.7 Constant Naming
 
-- The constant name must follow the camel case, and the initial letter is uppercase or lowercase according to the access control decision.
-- If it is a constant of enumeration type, you need to create the corresponding type first:
+In Go, constants play a critical role in defining values that do not change throughout the execution of a program. Adhering to best practices in naming constants can significantly improve the readability and maintainability of your code. Here are some guidelines for constant naming:
+
+- **Camel Case Naming:** The name of a constant must follow the camel case notation. The initial letter should be uppercase or lowercase based on the access control requirements. Uppercase indicates that the constant is exported (visible outside the package), while lowercase indicates package-private visibility (visible only within its own package).
+
+- **Enumeration Type Constants:** For constants that represent a set of enumerated values, it's recommended to define a corresponding type first. This approach not only enhances type safety but also improves code readability by clearly indicating the purpose of the enumeration.
+
+**Example:**
 
 ```go
 // Code defines an error code type.
@@ -450,10 +568,39 @@ type Code int
 const (
      // ErrUnknown - 0: An unknown error occurred.
      ErrUnknown Code = iota
-     // ErrFatal - 1: An fatal error occurred.
+     // ErrFatal - 1: A fatal error occurred.
      ErrFatal
 )
 ```
+
+In the example above, `Code` is defined as a new type based on `int`. The enumerated constants `ErrUnknown` and `ErrFatal` are then defined with explicit comments to indicate their purpose and values. This pattern is particularly useful for grouping related constants and providing additional context.
+
+### Global Variables and Constants Across Packages
+
+- **Use Constants for Global Variables:** When defining variables that are intended to be accessed across packages, prefer using constants to ensure immutability. This practice avoids unintended modifications to the value, which can lead to unpredictable behavior or hard-to-track bugs.
+
+- **Lowercase for Package-Private Usage:** If a global variable or constant is intended for use only within its own package, it should start with a lowercase letter. This clearly signals its limited scope of visibility, adhering to Go's access control mechanism based on naming conventions.
+
+**Guideline:**
+
+- For global constants that need to be accessed across packages, declare them with an uppercase initial letter. This makes them exported, adhering to Go's visibility rules.
+- For constants used within the same package, start their names with a lowercase letter to limit their scope to the package.
+
+**Example:**
+
+```go
+package config
+
+// MaxConnections - the maximum number of allowed connections. Visible across packages.
+const MaxConnections int = 100
+
+// minIdleTime - the minimum idle time before a connection is considered stale. Only visible within the config package.
+const minIdleTime int = 30
+```
+
+In this example, `MaxConnections` is a global constant meant to be accessed across packages, hence it starts with an uppercase letter. On the other hand, `minIdleTime` is intended for use only within the `config` package, so it starts with a lowercase letter.
+
+Following these guidelines ensures that your Go code is more readable, maintainable, and consistent with Go's design philosophy and access control mechanisms.
 
 ### 2.8 Error naming
 
@@ -470,6 +617,190 @@ type ExitError struct {
 ```go
 var ErrFormat = errors. New("unknown format")
 ```
+
+For non-standard Err naming, CICD will report an error
+
+
+### 2.9 Handling Errors Properly
+
+In Go, proper error handling is crucial for creating reliable and maintainable applications. It's important to ensure that errors are not ignored or discarded, as this can lead to unpredictable behavior and difficult-to-debug issues. Here are the guidelines and examples regarding the proper handling of errors.
+
+#### Guideline: Do Not Discard Errors
+
+- **Mandatory Error Propagation:** When calling a function that returns an error, the calling function must handle or propagate the error, instead of ignoring it. This approach ensures that errors are not silently ignored, allowing higher-level logic to make informed decisions about error handling.
+
+#### Incorrect Example: Discarding an Error
+
+```go
+package main
+
+import (
+	"io/ioutil"
+	"log"
+)
+
+func ReadFileContent(filename string) string {
+	content, _ := ioutil.ReadFile(filename) // Incorrect: Error is ignored
+	return string(content)
+}
+
+func main() {
+	content := ReadFileContent("example.txt")
+	log.Println(content)
+}
+```
+
+In this incorrect example, the error returned by `ioutil.ReadFile` is ignored. This can lead to situations where the program continues execution even if the file doesn't exist or cannot be accessed, potentially causing more cryptic errors downstream.
+
+#### Correct Example: Propagating an Error
+
+```go
+package main
+
+import (
+	"io/ioutil"
+	"log"
+)
+
+// ReadFileContent attempts to read and return the content of the specified file.
+// It returns an error if reading fails.
+func ReadFileContent(filename string) (string, error) {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		// Correct: Propagate the error
+		return "", err
+	}
+	return string(content), nil
+}
+
+func main() {
+	content, err := ReadFileContent("example.txt")
+	if err != nil {
+		log.Fatalf("Failed to read file: %v", err)
+	}
+	log.Println(content)
+}
+```
+
+In the correct example, the error returned by `ioutil.ReadFile` is propagated back to the caller. The `main` function then checks the error and terminates the program with an appropriate error message if an error occurred. This approach ensures that errors are handled appropriately, and the program does not proceed with invalid state.
+
+### Best Practices for Error Handling
+
+1. **Always check the error returned by a function.** Do not ignore it.
+2. **Propagate errors up the call stack unless they can be handled gracefully at the current level.**
+3. **Provide context for errors when propagating them, making it easier to trace the source of the error.** This can be achieved using `fmt.Errorf` with the `%w` verb or dedicated wrapping functions provided by some error handling packages.
+4. **Log the error at the point where it is handled or makes the program to terminate, to provide insight into the failure.**
+
+By following these guidelines, you ensure that your Go applications handle errors in a consistent and effective manner, improving their reliability and maintainability.
+
+
+### 2.10 Using Context with IO or Inter-Process Communication (IPC)
+
+In Go, `context.Context` is a powerful construct for managing deadlines, cancellation signals, and other request-scoped values across API boundaries and between processes. It is particularly important in I/O operations or inter-process communication (IPC), where operations might need to be cancelled or timed out.
+
+#### Guideline: Use Context for IO and IPC
+
+- **Mandatory Use of Context:** When performing I/O operations or inter-process communication, it's crucial to use `context.Context` to manage the lifecycle of these operations. This includes setting deadlines, handling cancellation signals, and passing request-scoped values.
+
+#### Incorrect Example: Ignoring Context in an HTTP Call
+
+```go
+package main
+
+import (
+	"io/ioutil"
+	"net/http"
+	"log"
+)
+
+// FetchData makes an HTTP GET request to the specified URL and returns the response body.
+// This function does not use context, making it impossible to cancel the request or set a deadline.
+func FetchData(url string) (string, error) {
+	resp, err := http.Get(url) // Incorrect: Ignoring context
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func main() {
+	data, err := FetchData("http://example.com")
+	if err != nil {
+		log.Fatalf("Failed to fetch data: %v", err)
+	}
+	log.Println(data)
+}
+```
+
+In this incorrect example, the `FetchData` function makes an HTTP GET request without using a `context`. This approach does not allow the request to be cancelled or a timeout to be set, potentially leading to resources being wasted if the server takes too long to respond or if the operation needs to be aborted for any reason.
+
+#### Correct Example: Using Context in an HTTP Call
+
+```go
+package main
+
+import (
+	"context"
+	"io/ioutil"
+	"net/http"
+	"log"
+	"time"
+)
+
+// FetchDataWithContext makes an HTTP GET request to the specified URL using the provided context.
+// This allows the request to be cancelled or timed out according to the context's deadline.
+func FetchDataWithContext(ctx context.Context, url string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func main() {
+	// Create a context with a 5-second timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	data, err := FetchDataWithContext(ctx, "http://example.com")
+	if err != nil {
+		log.Fatalf("Failed to fetch data: %v", err)
+	}
+	log.Println(data)
+}
+```
+
+In the correct example, `FetchDataWithContext` uses a context to make the HTTP GET request. This allows the operation to be cancelled or subjected to a timeout, as dictated by the context passed to it. The `context.WithTimeout` function is used in `main` to create a context that cancels the request if it takes longer than 5 seconds, demonstrating a practical use of context to manage operation lifecycle.
+
+### Best Practices for Using Context
+
+1. **Pass context as the first parameter of a function**, following the convention `func(ctx context.Context, ...)`.
+2. **Never ignore the context** provided to you in functions that support it. Always use it in your I/O or IPC operations.
+3. **Avoid storing context in a struct**. Contexts are meant to be passed around within the call stack, not stored.
+4. **Use context's cancellation and deadline features** to control the lifecycle of blocking operations, especially in network I/O and IPC scenarios.
+5. **Propagate context down the call stack** to any function that supports it, ensuring that your application can respond to cancellation signals and deadlines effectively.
+
+By adhering to these guidelines and examples, you can ensure that your Go applications handle I/O and IPC operations more reliably and efficiently, with proper support for cancellation, timeouts, and request-scoped values.
+
 
 ## 3. Comment specification
 
@@ -523,6 +854,7 @@ package genericclioptions
 // ErrSigningMethod defines invalid signing method error.
 var ErrSigningMethod = errors. New("Invalid signing method")
 ```
+
 - When there is a large block of constant or variable definition, you can comment a general description in front, and then comment the definition of the constant in detail before or at the end of each line of constant, for example:
 ```go
 // Code must start with 1xxxxx.
@@ -567,7 +899,7 @@ Each function or method that needs to be exported must have a comment, the forma
 // BeforeUpdate run before update database record.
 func (p *Policy) BeforeUpdate() (err error) {
 // normal code
-return nil
+  return nil
 }
 ```
 
@@ -743,9 +1075,9 @@ for i := 0; i < 10; i++ {
 ```go
 // bad
 for file := range files {
-fd, err := os. Open(file)
-if err != nil {
-return err
+    fd, err := os. Open(file)
+    if err != nil {
+    return err
 }
 defer fd. Close()
 // normal code
@@ -753,14 +1085,14 @@ defer fd. Close()
 
 //good
 for file := range files {
-func() {
-fd, err := os. Open(file)
-if err != nil {
-return err
-}
-defer fd. Close()
-// normal code
-}()
+    func() {
+        fd, err := os. Open(file)
+        if err != nil {
+        return err
+    }
+    defer fd. Close()
+    // normal code
+    }()
 }
 ```
 
@@ -888,6 +1220,7 @@ type LogHandler struct {
 }
 var_http.Handler = LogHandler{}
 ```
+
 - When the server processes a request, it should create a context, save the relevant information of the request (such as requestID), and pass it in the function call chain.
 
 ### 9.1 Performance
@@ -900,3 +1233,246 @@ var_http.Handler = LogHandler{}
 - If you want to directly modify the value of the map, the value can only be a pointer, otherwise the original value must be overwritten.
 - map needs to be locked during concurrency.
 - The conversion of interface{} cannot be checked during compilation, it can only be checked at runtime, be careful to cause panic.
+
+## 10 Golang CI Lint
+
+- Golang CI Lint is a fast Go linters runner. It runs linters in parallel, uses caching, and works well with all environments, including CI.
+
+**In local development, you can use the following command to install Golang CI Lint: **
+
+```bash
+make lint
+```
+
+**In CI/CD, Check the Github Actions status code below after you submit the code directly**
+
+[![OpenIM golangci-lint](https://github.com/openimsdk/open-im-server/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/openimsdk/open-im-server/actions/workflows/golangci-lint.yml)
+
+golangci lint can select the types of tools, refer to the official documentation: [https://golangci-lint.run/usage/linters/](https://golangci-lint.run/usage/linters/)
+
+The types of comments we currently use include: [https://github.com/openimsdk/open-im-server/blob/main/.golangci.yml](https://github.com/openimsdk/open-im-server/blob/main/.golangci.yml) the `linters.enable` field in the file.
+
+e.g:
+```yaml
+linters:
+  # please, do not use `enable-all`: it's deprecated and will be removed soon.
+  # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
+  # enable-all: true
+  disable-all: true
+  enable:
+    - typecheck     # Basic type checking
+    - gofmt         # Format check
+    - govet         # Go's standard linting tool
+    - gosimple      # Suggestions for simplifying code
+    - misspell      # Spelling mistakes
+    - staticcheck   # Static analysis
+    - unused        # Checks for unused code
+    - goimports     # Checks if imports are correctly sorted and formatted
+    - godot         # Checks for comment punctuation
+    - bodyclose     # Ensures HTTP response body is closed
+    - errcheck      # Checks for missed error returns
+  fast: true
+```
+
+Add that Chinese comments are not allowed in go code, please write a complete golangci lint specification on the basis of the above.
+
+
+### 10.1 Configuration Document
+
+This configuration document is designed to configure the operational parameters of OpenIM (a hypothetical or specific code analysis tool), customize output formats, and provide detailed settings for specific code checkers (linters). Below is a summary of the document drafted based on the provided configuration information.
+
+#### 10.1 Runtime Options
+
+- **Concurrency** (`concurrency`): Default to use the available CPU count, can be manually set to 4 for parallel analysis.
+- **Timeout** (`timeout`): Timeout duration for analysis operations, default is 1 minute, set here to 5 minutes.
+- **Issue Exit Code** (`issues-exit-code`): Exit code defaults to 1 if at least one issue is found.
+- **Test Files** (`tests`): Whether to include test files, defaults to true.
+- **Build Tags** (`build-tags`): Specify build tags used by all linters, defaults to an empty list. Example adds `mytag`.
+- **Skip Directories** (`skip-dirs`): Configure which directories' issues are not reported, defaults to empty, but some default directories are independently skipped.
+- **Skip Files** (`skip-files`): Specify files where issues should not be reported, supports regular expressions.
+
+#### 10.2 Output Configuration
+
+- **Format** (`format`): Set output format, default is "colored-line-number".
+- **Print Issued Lines** (`print-issued-lines`): Whether to print the lines where issues occur, defaults to true.
+- **Print Linter Name** (`print-linter-name`): Whether to print the linter name at the end of issue text, defaults to true.
+- **Uniqueness Filter** (`uniq-by-line`): Whether to make issue outputs unique per line, defaults to true.
+- **Path Prefix** (`path-prefix`): Prefix to add to output file references, defaults to no prefix.
+- **Sort Results** (`sort-results`): Sort results by file path, line number, and column number.
+
+#### 10.3 Linters Settings
+
+In the configuration file, the `linters-settings` section allows detailed configuration of individual linters. Below are examples of specific linters settings and their purposes:
+
+- **bidichk**: Used to check bidirectional text characters, ensuring correct display direction of text, especially when dealing with mixed left-to-right (LTR) and right-to-left (RTL) text.
+  
+- **dogsled**: Monitors excessive use of blank identifiers (`_`) in assignment operations, which may obscure data processing errors or unclear logic.
+  
+- **dupl**: Identifies duplicate code blocks, helping developers avoid code redundancy. The `threshold` parameter in settings allows adjustment of code similarity threshold triggering warnings.
+  
+- **errcheck**: Checks for unhandled errors. In Go, error handling is achieved by checking function return values. This linter helps ensure all errors are properly handled.
+  
+- **exhaustive**: Checks if `switch` statements include all possible values of an enum type, ensuring exhaustiveness of code. This helps avoid forgetting to handle certain cases.
+
+#### 10.4 Example: `errcheck`
+
+**Incorrect Code Example**:
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    f, _ := os.Open("filename.ext")
+    defer f.Close()
+}
+```
+
+**Issue**: In the above code, the error return value of `os.Open` function is explicitly ignored. This is a common mistake as it may lead to unhandled errors and hard-to-trace bugs.
+
+**Correct Form**:
+```go
+package main
+
+import (
+    "fmt"
+    "os"
+)
+
+func main() {
+    f, err := os.Open("filename.ext")
+    if err != nil {
+        fmt.Printf("error opening file: %v\n", err)
+        return
+    }
+    defer f.Close()
+}
+```
+
+In the correct form, by checking the error (`err`) returned by `os.Open`, we gracefully handle error cases rather than simply ignoring them.
+
+#### 10.5 Example: `gofmt`
+
+**Incorrect Code Example**:
+```go
+package main
+import "fmt"
+func main() {
+fmt.Println("Hello, world!")
+}
+```
+
+**Issue**: This code snippet doesn't follow Go's standard formatting rules, for example, incorrect indentation of `fmt.Println`.
+
+**Correct Form**:
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println("Hello, world!")
+}
+```
+
+Using `gofmt` tool can automatically fix such formatting issues, ensuring the code adheres to the coding standards of the Go community.
+
+#### 10.6 Example: `unused`
+
+**Incorrect Code Example**:
+```go
+package main
+
+func helper() {}
+
+func main() {}
+```
+
+**Issue**: The `helper` function is defined but not called anywhere, indicating potential redundant code or missing functionality implementation.
+
+**Correct Form**:
+```go
+package main
+
+// If the helper function is indeed needed, ensure it's used properly.
+func helper() {
+    // Implement the function's functionality or ensure it's called elsewhere
+}
+
+func main() {
+    helper()
+}
+```
+
+To improve the section on Linters settings in the document, we'll expand with more detailed explanations and reinforce understanding through examples.
+
+#### 10.7 Example: `dogsled`
+
+**Incorrect Code Example**:
+```go
+func getValues() (int, int, int) {
+    return 1, 2, 3
+}
+
+func main() {
+    _, _, val := getValues()
+    fmt.Println(val) // Only interested in the third return value
+}
+```
+
+**Explanation**: In the above code, we use two blank identifiers to ignore the first two return values. Excessive use of blank identifiers can make code reading difficult.
+
+**Improved Code**:
+Consider refactoring the function or the usage of return values to reduce the need for blank identifiers or explicitly comment why ignoring certain values is safe.
+
+#### 10.8: `exhaustive`
+
+**Incorrect Code Example**:
+```go
+type Fruit int
+
+const (
+    Apple Fruit = iota
+    Banana
+    Orange
+)
+
+func getFruitName(f Fruit) string {
+    switch f {
+    case Apple:
+        return "Apple"
+    case Banana:
+        return "Banana"
+    // Missing handling for Orange
+    }
+    return "Unknown"
+}
+```
+
+**Explanation**: In this code, the `switch` statement doesn't cover all possible values of the `Fruit` type; the case for `Orange` is missing.
+
+**Improved Code**:
+```go
+func getFruitName(f Fruit) string {
+    switch f {
+    case Apple:
+        return "Apple"
+    case Banana:
+        return "Banana"
+    case Orange:
+        return "Orange"
+    }
+    return "Unknown"
+}
+```
+
+By adding the missing `case`, we ensure the `switch` statement is exhaustive, handling every possible enum value.
+
+#### 10.9 Optimization of Configuration Files and Application of Code Analysis Tools
+
+Through these examples, we demonstrate how to improve code quality by identifying and fixing common coding issues. OpenIM's configuration files allow developers to customize linters' behavior according to project requirements, ensuring code compliance with predefined quality standards and style guidelines.
+
+By employing these tools and configuration strategies, teams can reduce the number of bugs, enhance code maintainability, and facilitate efficient collaboration during code review processes.

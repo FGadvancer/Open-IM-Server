@@ -1,8 +1,0 @@
-CHANGELOG
-go.mod
-go.sum
-third_party/
-translations/
-logs
-.git
-.golangci.yml

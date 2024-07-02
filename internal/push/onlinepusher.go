@@ -2,22 +2,14 @@ package push
 
 import (
 	"context"
-	"github.com/OpenIMSDK/protocol/msggateway"
-	"github.com/OpenIMSDK/protocol/sdkws"
-	"github.com/OpenIMSDK/tools/discoveryregistry"
-	"github.com/OpenIMSDK/tools/log"
-	"github.com/OpenIMSDK/tools/utils"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/protocol/msggateway"
+	"github.com/openimsdk/protocol/sdkws"
+	"github.com/openimsdk/tools/discovery"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/utils/datautil"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"os"
 	"sync"
-)
-
-const (
-	ENVNAME    = "ENVS_DISCOVERY"
-	KUBERNETES = "k8s"
-	ZOOKEEPER  = "zookeeper"
 )
 
 type OnlinePusher interface {
@@ -44,35 +36,37 @@ func (u emptyOnlinePUsher) GetOnlinePushFailedUserIDs(ctx context.Context, msg *
 	return nil
 }
 
-func NewOnlinePusher(disCov discoveryregistry.SvcDiscoveryRegistry) OnlinePusher {
-	var envType string
-	if value := os.Getenv(ENVNAME); value != "" {
-		envType = os.Getenv(ENVNAME)
-	} else {
-		envType = config.Config.Envs.Discovery
-	}
-	switch envType {
-	case KUBERNETES:
-		return NewK8sStaticConsistentHash(disCov)
-	case ZOOKEEPER:
-		return NewDefaultAllNode(disCov)
+func NewOnlinePusher(disCov discovery.SvcDiscoveryRegistry, config *Config) OnlinePusher {
+	switch config.Discovery.Enable {
+	case "k8s":
+		return NewK8sStaticConsistentHash(disCov, config)
+	case "zookeeper":
+		return NewDefaultAllNode(disCov, config)
+	case "etcd":
+		return NewDefaultAllNode(disCov, config)
 	default:
 		return newEmptyOnlinePUsher()
 	}
 }
 
 type DefaultAllNode struct {
-	disCov discoveryregistry.SvcDiscoveryRegistry
+	disCov discovery.SvcDiscoveryRegistry
+	config *Config
 }
 
-func NewDefaultAllNode(disCov discoveryregistry.SvcDiscoveryRegistry) *DefaultAllNode {
-	return &DefaultAllNode{disCov: disCov}
+func NewDefaultAllNode(disCov discovery.SvcDiscoveryRegistry, config *Config) *DefaultAllNode {
+	return &DefaultAllNode{disCov: disCov, config: config}
 }
 
 func (d *DefaultAllNode) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.MsgData,
 	pushToUserIDs []string) (wsResults []*msggateway.SingleMsgToUserResults, err error) {
-	conns, err := d.disCov.GetConns(ctx, config.Config.RpcRegisterName.OpenImMessageGatewayName)
-	log.ZDebug(ctx, "get gateway conn", "conn length", len(conns))
+	conns, err := d.disCov.GetConns(ctx, d.config.Share.RpcRegisterName.MessageGateway)
+	if len(conns) == 0 {
+		log.ZWarn(ctx, "get gateway conn 0 ", nil)
+	} else {
+		log.ZDebug(ctx, "get gateway conn", "conn length", len(conns))
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +75,7 @@ func (d *DefaultAllNode) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.M
 		mu         sync.Mutex
 		wg         = errgroup.Group{}
 		input      = &msggateway.OnlineBatchPushOneMsgReq{MsgData: msg, PushToUserIDs: pushToUserIDs}
-		maxWorkers = config.Config.Push.MaxConcurrentWorkers
+		maxWorkers = d.config.RpcConfig.MaxConcurrentWorkers
 	)
 
 	if maxWorkers < 3 {
@@ -93,10 +87,12 @@ func (d *DefaultAllNode) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.M
 	// Online push message
 	for _, conn := range conns {
 		conn := conn // loop var safe
+		ctx := ctx
 		wg.Go(func() error {
 			msgClient := msggateway.NewMsgGatewayClient(conn)
 			reply, err := msgClient.SuperGroupOnlineBatchPushOneMsg(ctx, input)
 			if err != nil {
+				log.ZError(ctx, "SuperGroupOnlineBatchPushOneMsg ", err, "req:", input.String())
 				return nil
 			}
 
@@ -133,15 +129,16 @@ func (d *DefaultAllNode) GetOnlinePushFailedUserIDs(_ context.Context, msg *sdkw
 
 	}
 
-	return utils.SliceSub(*pushToUserIDs, onlineSuccessUserIDs)
+	return datautil.SliceSub(*pushToUserIDs, onlineSuccessUserIDs)
 }
 
 type K8sStaticConsistentHash struct {
-	disCov discoveryregistry.SvcDiscoveryRegistry
+	disCov discovery.SvcDiscoveryRegistry
+	config *Config
 }
 
-func NewK8sStaticConsistentHash(disCov discoveryregistry.SvcDiscoveryRegistry) *K8sStaticConsistentHash {
-	return &K8sStaticConsistentHash{disCov: disCov}
+func NewK8sStaticConsistentHash(disCov discovery.SvcDiscoveryRegistry, config *Config) *K8sStaticConsistentHash {
+	return &K8sStaticConsistentHash{disCov: disCov, config: config}
 }
 
 func (k *K8sStaticConsistentHash) GetConnsAndOnlinePush(ctx context.Context, msg *sdkws.MsgData,
@@ -171,7 +168,7 @@ func (k *K8sStaticConsistentHash) GetConnsAndOnlinePush(ctx context.Context, msg
 	var (
 		mu         sync.Mutex
 		wg         = errgroup.Group{}
-		maxWorkers = config.Config.Push.MaxConcurrentWorkers
+		maxWorkers = k.config.RpcConfig.MaxConcurrentWorkers
 	)
 	if maxWorkers < 3 {
 		maxWorkers = 3

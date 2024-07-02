@@ -22,13 +22,18 @@ import (
 
 	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush/jpush/body"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	http2 "github.com/openimsdk/open-im-server/v3/pkg/common/http"
+	"github.com/openimsdk/tools/utils/httputil"
 )
 
-type JPush struct{}
+type JPush struct {
+	pushConf   *config.Push
+	httpClient *httputil.HTTPClient
+}
 
-func NewJPush() *JPush {
-	return &JPush{}
+func NewClient(pushConf *config.Push) *JPush {
+	return &JPush{pushConf: pushConf,
+		httpClient: httputil.NewHTTPClient(httputil.NewClientConfig()),
+	}
 }
 
 func (j *JPush) Auth(apiKey, secretKey string, timeStamp int64) (token string, err error) {
@@ -59,10 +64,12 @@ func (j *JPush) Push(ctx context.Context, userIDs []string, title, content strin
 	no.IOSEnableMutableContent()
 	no.SetExtras(extras)
 	no.SetAlert(title)
+	no.SetAndroidIntent(j.pushConf)
+
 	var msg body.Message
 	msg.SetMsgContent(content)
 	var opt body.Options
-	opt.SetApnsProduction(config.Config.IOSPush.Production)
+	opt.SetApnsProduction(j.pushConf.IOSPush.Production)
 	var pushObj body.PushObj
 	pushObj.SetPlatform(&pf)
 	pushObj.SetAudience(&au)
@@ -74,11 +81,11 @@ func (j *JPush) Push(ctx context.Context, userIDs []string, title, content strin
 }
 
 func (j *JPush) request(ctx context.Context, po body.PushObj, resp any, timeout int) error {
-	return http2.PostReturn(
+	return j.httpClient.PostReturn(
 		ctx,
-		config.Config.Push.Jpns.PushUrl,
+		j.pushConf.JPNS.PushURL,
 		map[string]string{
-			"Authorization": j.getAuthorization(config.Config.Push.Jpns.AppKey, config.Config.Push.Jpns.MasterSecret),
+			"Authorization": j.getAuthorization(j.pushConf.JPNS.AppKey, j.pushConf.JPNS.MasterSecret),
 		},
 		po,
 		resp,

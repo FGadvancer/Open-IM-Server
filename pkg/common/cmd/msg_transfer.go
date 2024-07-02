@@ -15,55 +15,44 @@
 package cmd
 
 import (
-	"fmt"
-
-	"github.com/OpenIMSDK/protocol/constant"
-	"github.com/spf13/cobra"
-
-	config2 "github.com/openimsdk/open-im-server/v3/pkg/common/config"
-
+	"context"
 	"github.com/openimsdk/open-im-server/v3/internal/msgtransfer"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/tools/system/program"
+	"github.com/spf13/cobra"
 )
 
 type MsgTransferCmd struct {
 	*RootCmd
+	ctx               context.Context
+	configMap         map[string]any
+	msgTransferConfig *msgtransfer.Config
 }
 
 func NewMsgTransferCmd() *MsgTransferCmd {
-	ret := &MsgTransferCmd{NewRootCmd("msgTransfer")}
-	ret.SetRootCmdPt(ret)
+	var msgTransferConfig msgtransfer.Config
+	ret := &MsgTransferCmd{msgTransferConfig: &msgTransferConfig}
+	ret.configMap = map[string]any{
+		OpenIMMsgTransferCfgFileName: &msgTransferConfig.MsgTransfer,
+		RedisConfigFileName:          &msgTransferConfig.RedisConfig,
+		MongodbConfigFileName:        &msgTransferConfig.MongodbConfig,
+		KafkaConfigFileName:          &msgTransferConfig.KafkaConfig,
+		ShareFileName:                &msgTransferConfig.Share,
+		WebhooksConfigFileName:       &msgTransferConfig.WebhooksConfig,
+		DiscoveryConfigFilename:      &msgTransferConfig.Discovery,
+	}
+	ret.RootCmd = NewRootCmd(program.GetProcessName(), WithConfigMap(ret.configMap))
+	ret.ctx = context.WithValue(context.Background(), "version", config.Version)
+	ret.Command.RunE = func(cmd *cobra.Command, args []string) error {
+		return ret.runE()
+	}
 	return ret
 }
 
-func (m *MsgTransferCmd) addRunE() {
-	m.Command.RunE = func(cmd *cobra.Command, args []string) error {
-		return msgtransfer.StartTransfer(m.getPrometheusPortFlag(cmd))
-	}
-}
-
 func (m *MsgTransferCmd) Exec() error {
-	m.addRunE()
 	return m.Execute()
 }
 
-func (m *MsgTransferCmd) GetPortFromConfig(portType string) int {
-	fmt.Println("GetPortFromConfig:", portType)
-	if portType == constant.FlagPort {
-		return 0
-	} else if portType == constant.FlagPrometheusPort {
-		n := m.getTransferProgressFlagValue()
-		return config2.Config.Prometheus.MessageTransferPrometheusPort[n]
-	}
-	return 0
-}
-func (m *MsgTransferCmd) AddTransferProgressFlag() {
-	m.Command.Flags().IntP(constant.FlagTransferProgressIndex, "n", 0, "transfer progress index")
-}
-func (m *MsgTransferCmd) getTransferProgressFlagValue() int {
-	nindex, err := m.Command.Flags().GetInt(constant.FlagTransferProgressIndex)
-	if err != nil {
-		fmt.Println("get transfercmd error,make sure it is k8s env or not")
-		return 0
-	}
-	return nindex
+func (m *MsgTransferCmd) runE() error {
+	return msgtransfer.Start(m.ctx, m.Index(), m.msgTransferConfig)
 }

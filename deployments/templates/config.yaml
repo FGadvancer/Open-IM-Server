@@ -153,6 +153,13 @@ object:
     accessKeySecret: ${KODO_ACCESS_KEY_SECRET}
     sessionToken: ${KODO_SESSION_TOKEN}
     publicRead: ${KODO_PUBLIC_READ}
+  aws:
+    endpoint: "${AWS_ENDPOINT}" # This might not be necessary unless you're using a custom endpoint
+    region: "${AWS_REGION}"
+    bucket: "${AWS_BUCKET}"
+    accessKeyID: ${AWS_ACCESS_KEY_ID}
+    accessKeySecret: ${AWS_SECRET_ACCESS_KEY}
+    publicRead: ${AWS_PUBLIC_READ}
 
 ###################### RPC Port Configuration ######################
 # RPC service ports
@@ -243,9 +250,10 @@ push:
 #
 # Built-in app manager user IDs
 # Built-in app manager nicknames
+# Attention, this configure is discarded. If you have used him before, configure your own
 manager:
-  userID: [ "${MANAGER_USERID_1}", "${MANAGER_USERID_2}", "${MANAGER_USERID_3}" ]
-  nickname: [ "${NICKNAME_1}", "${NICKNAME_2}", "${NICKNAME_3}" ]
+  userID:
+  nickname:
 
 # chatAdmin, use for send notification
 #
@@ -315,7 +323,7 @@ iosPush:
 # Timeout in seconds
 # Whether to continue execution if callback fails
 callback:
-  url: "http://127.0.0.1:10008/callbackExample"
+  url: "webhook://127.0.0.1:10008/callbackExample"
   beforeSendSingleMsg:
     enable: ${CALLBACK_ENABLE}
     timeout: ${CALLBACK_TIMEOUT}
@@ -329,7 +337,7 @@ callback:
     timeout: ${CALLBACK_TIMEOUT}
     failedContinue: ${CALLBACK_FAILED_CONTINUE}
   afterSendSingleMsg:
-    enable: true
+    enable: ${CALLBACK_ENABLE}
     timeout: ${CALLBACK_TIMEOUT}
     failedContinue: ${CALLBACK_FAILED_CONTINUE}
   beforeSendGroupMsg:

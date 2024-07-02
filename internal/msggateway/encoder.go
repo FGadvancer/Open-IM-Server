@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/gob"
 
-	"github.com/OpenIMSDK/tools/utils"
+	"github.com/openimsdk/tools/errs"
 )
 
 type Encoder interface {
@@ -37,9 +37,8 @@ func NewGobEncoder() *GobEncoder {
 func (g *GobEncoder) Encode(data any) ([]byte, error) {
 	buff := bytes.Buffer{}
 	enc := gob.NewEncoder(&buff)
-	err := enc.Encode(data)
-	if err != nil {
-		return nil, err
+	if err := enc.Encode(data); err != nil {
+		return nil, errs.WrapMsg(err, "GobEncoder.Encode failed", "action", "encode")
 	}
 	return buff.Bytes(), nil
 }
@@ -56,9 +55,8 @@ func (g *GobEncoder) EncodeWithExternalPool(rawData any, encodeData *bytes.Buffe
 func (g *GobEncoder) Decode(encodeData []byte, decodeData any) error {
 	buff := bytes.NewBuffer(encodeData)
 	dec := gob.NewDecoder(buff)
-	err := dec.Decode(decodeData)
-	if err != nil {
-		return utils.Wrap(err, "")
+	if err := dec.Decode(decodeData); err != nil {
+		return errs.WrapMsg(err, "GobEncoder.Decode failed", "action", "decode")
 	}
 	return nil
 }
@@ -67,7 +65,7 @@ func (g *GobEncoder) DecodeWithExternalPool(encodeData *bytes.Buffer, rawData an
 	dec := gob.NewDecoder(encodeData)
 	err := dec.Decode(rawData)
 	if err != nil {
-		return utils.Wrap(err, "")
+		return errs.Wrap(err)
 	}
 	return nil
 }

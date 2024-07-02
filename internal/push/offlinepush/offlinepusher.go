@@ -22,13 +22,13 @@ import (
 	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush/jpush"
 	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush/options"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/cache"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/cache"
 )
 
 const (
-	GETUI    = "getui"
-	FIREBASE = "fcm"
-	JPUSH    = "jpush"
+	geTUI    = "geTui"
+	firebase = "fcm"
+	jPush    = "jpush"
 )
 
 // OfflinePusher Offline Pusher.
@@ -36,17 +36,17 @@ type OfflinePusher interface {
 	Push(ctx context.Context, userIDs []string, title, content string, opts *options.Opts) error
 }
 
-func NewOfflinePusher(cache cache.MsgModel) OfflinePusher {
+func NewOfflinePusher(pushConf *config.Push, cache cache.ThirdCache, fcmConfigPath string) (OfflinePusher, error) {
 	var offlinePusher OfflinePusher
-	switch config.Config.Push.Enable {
-	case GETUI:
-		offlinePusher = getui.NewGeTui(cache)
-	case FIREBASE:
-		offlinePusher = fcm.NewFcm(cache)
-	case JPUSH:
-		offlinePusher = jpush.NewJPush()
+	switch pushConf.Enable {
+	case geTUI:
+		offlinePusher = getui.NewClient(pushConf, cache)
+	case firebase:
+		return fcm.NewClient(pushConf, cache, fcmConfigPath)
+	case jPush:
+		offlinePusher = jpush.NewClient(pushConf)
 	default:
-		offlinePusher = dummy.NewDummy()
+		offlinePusher = dummy.NewClient()
 	}
-	return offlinePusher
+	return offlinePusher, nil
 }

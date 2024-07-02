@@ -15,104 +15,152 @@
 package msgtransfer
 
 import (
-	"errors"
+	"context"
 	"fmt"
-	"log"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/cache/redis"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/database/mgo"
+	"github.com/openimsdk/tools/db/mongoutil"
+	"github.com/openimsdk/tools/db/redisutil"
+	"github.com/openimsdk/tools/utils/datautil"
 	"net/http"
-	"sync"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/OpenIMSDK/tools/mw"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	kdisc "github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/controller"
+	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/log"
+	"github.com/openimsdk/tools/mw"
+	"github.com/openimsdk/tools/system/program"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/cache"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/controller"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/unrelation"
-	kdisc "github.com/openimsdk/open-im-server/v3/pkg/common/discoveryregister"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/prommetrics"
-	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
 )
 
 type MsgTransfer struct {
-	historyCH      *OnlineHistoryRedisConsumerHandler // 这个消费者聚合消息, 订阅的topic：ws2ms_chat, 修改通知发往msg_to_modify topic, 消息存入redis后Incr Redis, 再发消息到ms2pschat topic推送， 发消息到msg_to_mongo topic持久化
-	historyMongoCH *OnlineHistoryMongoConsumerHandler // mongoDB批量插入, 成功后删除redis中消息，以及处理删除通知消息删除的 订阅的topic: msg_to_mongo
-	// modifyCH       *ModifyMsgConsumerHandler          // 负责消费修改消息通知的consumer, 订阅的topic: msg_to_modify
+	// This consumer aggregated messages, subscribed to the topic:toRedis,
+	//  the message is stored in redis, Incr Redis, and then the message is sent to toPush topic for push,
+	// and the message is sent to toMongo topic for persistence
+	historyCH *OnlineHistoryRedisConsumerHandler
+	//This consumer handle message to mongo
+	historyMongoCH *OnlineHistoryMongoConsumerHandler
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
-func StartTransfer(prometheusPort int) error {
-	rdb, err := cache.NewRedis()
-	if err != nil {
-		return err
-	}
-	mongo, err := unrelation.NewMongo()
-	if err != nil {
-		return err
-	}
-	if err := mongo.CreateMsgIndex(); err != nil {
-		return err
-	}
-	client, err := kdisc.NewDiscoveryRegister(config.Config.Envs.Discovery)
-	/*
-		client, err := openkeeper.NewClient(config.Config.Zookeeper.ZkAddr, config.Config.Zookeeper.Schema,
-			openkeeper.WithFreq(time.Hour), openkeeper.WithRoundRobin(), openkeeper.WithUserNameAndPassword(config.Config.Zookeeper.Username,
-				config.Config.Zookeeper.Password), openkeeper.WithTimeout(10), openkeeper.WithLogger(log.NewZkLogger()))*/
-	if err != nil {
-		return err
-	}
-	if err := client.CreateRpcRootNodes(config.Config.GetServiceNames()); err != nil {
-		return err
-	}
-	client.AddOption(mw.GrpcClient(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, "round_robin")))
-	msgModel := cache.NewMsgCacheModel(rdb)
-	msgDocModel := unrelation.NewMsgMongoDriver(mongo.GetDatabase())
-	msgDatabase := controller.NewCommonMsgDatabase(msgDocModel, msgModel)
-	conversationRpcClient := rpcclient.NewConversationRpcClient(client)
-	groupRpcClient := rpcclient.NewGroupRpcClient(client)
-	msgTransfer := NewMsgTransfer(msgDatabase, &conversationRpcClient, &groupRpcClient)
-	return msgTransfer.Start(prometheusPort)
+type Config struct {
+	MsgTransfer    config.MsgTransfer
+	RedisConfig    config.Redis
+	MongodbConfig  config.Mongo
+	KafkaConfig    config.Kafka
+	Share          config.Share
+	WebhooksConfig config.Webhooks
+	Discovery      config.Discovery
 }
 
-func NewMsgTransfer(msgDatabase controller.CommonMsgDatabase, conversationRpcClient *rpcclient.ConversationRpcClient, groupRpcClient *rpcclient.GroupRpcClient) *MsgTransfer {
-	return &MsgTransfer{
-		historyCH:      NewOnlineHistoryRedisConsumerHandler(msgDatabase, conversationRpcClient, groupRpcClient),
-		historyMongoCH: NewOnlineHistoryMongoConsumerHandler(msgDatabase),
-	}
-}
-
-func (m *MsgTransfer) Start(prometheusPort int) error {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	fmt.Println("start msg transfer", "prometheusPort:", prometheusPort)
-	if prometheusPort <= 0 {
-		return errors.New("prometheusPort not correct")
-	}
-	if config.Config.ChatPersistenceMysql {
-		// go m.persistentCH.persistentConsumerGroup.RegisterHandleAndConsumer(m.persistentCH)
-	} else {
-		fmt.Println("msg transfer not start mysql consumer")
-	}
-	go m.historyCH.historyConsumerGroup.RegisterHandleAndConsumer(m.historyCH)
-	go m.historyMongoCH.historyConsumerGroup.RegisterHandleAndConsumer(m.historyMongoCH)
-	// go m.modifyCH.modifyMsgConsumerGroup.RegisterHandleAndConsumer(m.modifyCH)
-	/*err := prome.StartPrometheusSrv(prometheusPort)
+func Start(ctx context.Context, index int, config *Config) error {
+	log.CInfo(ctx, "MSG-TRANSFER server is initializing", "prometheusPorts",
+		config.MsgTransfer.Prometheus.Ports, "index", index)
+	mgocli, err := mongoutil.NewMongoDB(ctx, config.MongodbConfig.Build())
 	if err != nil {
 		return err
-	}*/
-	////////////////////////////
-	if config.Config.Prometheus.Enable {
-		reg := prometheus.NewRegistry()
-		reg.MustRegister(
-			collectors.NewGoCollector(),
-		)
-		reg.MustRegister(prommetrics.GetGrpcCusMetrics("Transfer")...)
-		http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{Registry: reg}))
-		log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", prometheusPort), nil))
 	}
-	////////////////////////////////////////
-	wg.Wait()
-	return nil
+	rdb, err := redisutil.NewRedisClient(ctx, config.RedisConfig.Build())
+	if err != nil {
+		return err
+	}
+	client, err := kdisc.NewDiscoveryRegister(&config.Discovery, &config.Share)
+	if err != nil {
+		return err
+	}
+	client.AddOption(mw.GrpcClient(), grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"LoadBalancingPolicy": "%s"}`, "round_robin")))
+	msgModel := redis.NewMsgCache(rdb)
+	seqModel := redis.NewSeqCache(rdb)
+	msgDocModel, err := mgo.NewMsgMongo(mgocli.GetDB())
+	if err != nil {
+		return err
+	}
+	msgDatabase, err := controller.NewCommonMsgDatabase(msgDocModel, msgModel, seqModel, &config.KafkaConfig)
+	if err != nil {
+		return err
+	}
+	conversationRpcClient := rpcclient.NewConversationRpcClient(client, config.Share.RpcRegisterName.Conversation)
+	groupRpcClient := rpcclient.NewGroupRpcClient(client, config.Share.RpcRegisterName.Group)
+	historyCH, err := NewOnlineHistoryRedisConsumerHandler(&config.KafkaConfig, msgDatabase, &conversationRpcClient, &groupRpcClient)
+	if err != nil {
+		return err
+	}
+	historyMongoCH, err := NewOnlineHistoryMongoConsumerHandler(&config.KafkaConfig, msgDatabase)
+	if err != nil {
+		return err
+	}
+	msgTransfer := &MsgTransfer{
+		historyCH:      historyCH,
+		historyMongoCH: historyMongoCH,
+	}
+	return msgTransfer.Start(index, config)
+}
+
+func (m *MsgTransfer) Start(index int, config *Config) error {
+	m.ctx, m.cancel = context.WithCancel(context.Background())
+	var (
+		netDone = make(chan struct{}, 1)
+		netErr  error
+	)
+
+	go m.historyCH.historyConsumerGroup.RegisterHandleAndConsumer(m.ctx, m.historyCH)
+	go m.historyMongoCH.historyConsumerGroup.RegisterHandleAndConsumer(m.ctx, m.historyMongoCH)
+	err := m.historyCH.redisMessageBatches.Start()
+	if err != nil {
+		return err
+	}
+
+	if config.MsgTransfer.Prometheus.Enable {
+		go func() {
+			prometheusPort, err := datautil.GetElemByIndex(config.MsgTransfer.Prometheus.Ports, index)
+			if err != nil {
+				netErr = err
+				netDone <- struct{}{}
+				return
+			}
+			proreg := prometheus.NewRegistry()
+			proreg.MustRegister(
+				collectors.NewGoCollector(),
+			)
+			proreg.MustRegister(prommetrics.GetGrpcCusMetrics("Transfer", &config.Share)...)
+			http.Handle("/metrics", promhttp.HandlerFor(proreg, promhttp.HandlerOpts{Registry: proreg}))
+			err = http.ListenAndServe(fmt.Sprintf(":%d", prometheusPort), nil)
+			if err != nil && err != http.ErrServerClosed {
+				netErr = errs.WrapMsg(err, "prometheus start error", "prometheusPort", prometheusPort)
+				netDone <- struct{}{}
+			}
+		}()
+	}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	select {
+	case <-sigs:
+		program.SIGTERMExit()
+		// graceful close kafka client.
+		m.cancel()
+		m.historyCH.redisMessageBatches.Close()
+		m.historyCH.historyConsumerGroup.Close()
+		m.historyMongoCH.historyConsumerGroup.Close()
+		return nil
+	case <-netDone:
+		m.cancel()
+		m.historyCH.redisMessageBatches.Close()
+		m.historyCH.historyConsumerGroup.Close()
+		m.historyMongoCH.historyConsumerGroup.Close()
+		close(netDone)
+		return netErr
+	}
 }

@@ -21,13 +21,13 @@ type (
 	configs struct {
 		// Long connection listening port
 		port int
-		// Maximum number of long connections allowed
+		// Maximum number of connections allowed for long connection
 		maxConnNum int64
 		// Connection handshake timeout
 		handshakeTimeout time.Duration
-		// Maximum allowed message length
+		// Maximum length allowed for messages
 		messageMaxMsgLength int
-		// websocket write buffer, default: 4096, 4kb.
+		// Websocket write buffer, default: 4096, 4kb.
 		writeBufferSize int
 	}
 )

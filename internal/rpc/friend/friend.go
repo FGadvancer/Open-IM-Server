@@ -16,187 +16,196 @@ package friend
 
 import (
 	"context"
-	"github.com/OpenIMSDK/tools/tx"
 
-	"github.com/OpenIMSDK/protocol/sdkws"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/cache/redis"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/database/mgo"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/model"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/webhook"
+	"github.com/openimsdk/open-im-server/v3/pkg/localcache"
+	"github.com/openimsdk/tools/db/redisutil"
 
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
-
-	"github.com/OpenIMSDK/tools/log"
-
 	"github.com/openimsdk/open-im-server/v3/pkg/common/convert"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/servererrs"
+	"github.com/openimsdk/open-im-server/v3/pkg/common/storage/controller"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient"
-
+	"github.com/openimsdk/protocol/constant"
+	"github.com/openimsdk/protocol/relation"
+	"github.com/openimsdk/protocol/sdkws"
+	"github.com/openimsdk/tools/db/mongoutil"
+	"github.com/openimsdk/tools/discovery"
+	"github.com/openimsdk/tools/errs"
+	"github.com/openimsdk/tools/utils/datautil"
 	"google.golang.org/grpc"
-
-	"github.com/OpenIMSDK/protocol/constant"
-	pbfriend "github.com/OpenIMSDK/protocol/friend"
-	registry "github.com/OpenIMSDK/tools/discoveryregistry"
-	"github.com/OpenIMSDK/tools/errs"
-	"github.com/OpenIMSDK/tools/utils"
-
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/cache"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/controller"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/mgo"
-	tablerelation "github.com/openimsdk/open-im-server/v3/pkg/common/db/table/relation"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/db/unrelation"
-	"github.com/openimsdk/open-im-server/v3/pkg/rpcclient/notification"
 )
 
 type friendServer struct {
-	friendDatabase        controller.FriendDatabase
+	db                    controller.FriendDatabase
 	blackDatabase         controller.BlackDatabase
 	userRpcClient         *rpcclient.UserRpcClient
-	notificationSender    *notification.FriendNotificationSender
+	notificationSender    *FriendNotificationSender
 	conversationRpcClient rpcclient.ConversationRpcClient
-	RegisterCenter        registry.SvcDiscoveryRegistry
+	RegisterCenter        discovery.SvcDiscoveryRegistry
+	config                *Config
+	webhookClient         *webhook.Client
 }
 
-func Start(client registry.SvcDiscoveryRegistry, server *grpc.Server) error {
-	// Initialize MongoDB
-	mongo, err := unrelation.NewMongo()
+type Config struct {
+	RpcConfig     config.Friend
+	RedisConfig   config.Redis
+	MongodbConfig config.Mongo
+	// ZookeeperConfig    config.ZooKeeper
+	NotificationConfig config.Notification
+	Share              config.Share
+	WebhooksConfig     config.Webhooks
+	LocalCacheConfig   config.LocalCache
+	Discovery          config.Discovery
+}
+
+func Start(ctx context.Context, config *Config, client discovery.SvcDiscoveryRegistry, server *grpc.Server) error {
+	mgocli, err := mongoutil.NewMongoDB(ctx, config.MongodbConfig.Build())
+	if err != nil {
+		return err
+	}
+	rdb, err := redisutil.NewRedisClient(ctx, config.RedisConfig.Build())
 	if err != nil {
 		return err
 	}
 
-	// Initialize Redis
-	rdb, err := cache.NewRedis()
+	friendMongoDB, err := mgo.NewFriendMongo(mgocli.GetDB())
 	if err != nil {
 		return err
 	}
 
-	friendMongoDB, err := mgo.NewFriendMongo(mongo.GetDatabase())
+	friendRequestMongoDB, err := mgo.NewFriendRequestMongo(mgocli.GetDB())
 	if err != nil {
 		return err
 	}
 
-	friendRequestMongoDB, err := mgo.NewFriendRequestMongo(mongo.GetDatabase())
-	if err != nil {
-		return err
-	}
-
-	blackMongoDB, err := mgo.NewBlackMongo(mongo.GetDatabase())
+	blackMongoDB, err := mgo.NewBlackMongo(mgocli.GetDB())
 	if err != nil {
 		return err
 	}
 
 	// Initialize RPC clients
-	userRpcClient := rpcclient.NewUserRpcClient(client)
-	msgRpcClient := rpcclient.NewMessageRpcClient(client)
+	userRpcClient := rpcclient.NewUserRpcClient(client, config.Share.RpcRegisterName.User, config.Share.IMAdminUserID)
+	msgRpcClient := rpcclient.NewMessageRpcClient(client, config.Share.RpcRegisterName.Msg)
 
 	// Initialize notification sender
-	notificationSender := notification.NewFriendNotificationSender(
+	notificationSender := NewFriendNotificationSender(
+		&config.NotificationConfig,
 		&msgRpcClient,
-		notification.WithRpcFunc(userRpcClient.GetUsersInfo),
+		WithRpcFunc(userRpcClient.GetUsersInfo),
 	)
+	localcache.InitLocalCache(&config.LocalCacheConfig)
+
 	// Register Friend server with refactored MongoDB and Redis integrations
-	pbfriend.RegisterFriendServer(server, &friendServer{
-		friendDatabase: controller.NewFriendDatabase(
+	relation.RegisterFriendServer(server, &friendServer{
+		db: controller.NewFriendDatabase(
 			friendMongoDB,
 			friendRequestMongoDB,
-			cache.NewFriendCacheRedis(rdb, friendMongoDB, cache.GetDefaultOpt()),
-			tx.NewMongo(mongo.GetClient()),
+			redis.NewFriendCacheRedis(rdb, &config.LocalCacheConfig, friendMongoDB, redis.GetRocksCacheOptions()),
+			mgocli.GetTx(),
 		),
 		blackDatabase: controller.NewBlackDatabase(
 			blackMongoDB,
-			cache.NewBlackCacheRedis(rdb, blackMongoDB, cache.GetDefaultOpt()),
+			redis.NewBlackCacheRedis(rdb, &config.LocalCacheConfig, blackMongoDB, redis.GetRocksCacheOptions()),
 		),
 		userRpcClient:         &userRpcClient,
 		notificationSender:    notificationSender,
 		RegisterCenter:        client,
-		conversationRpcClient: rpcclient.NewConversationRpcClient(client),
+		conversationRpcClient: rpcclient.NewConversationRpcClient(client, config.Share.RpcRegisterName.Conversation),
+		config:                config,
+		webhookClient:         webhook.NewWebhookClient(config.WebhooksConfig.URL),
 	})
 
 	return nil
 }
 
 // ok.
-func (s *friendServer) ApplyToAddFriend(ctx context.Context, req *pbfriend.ApplyToAddFriendReq) (resp *pbfriend.ApplyToAddFriendResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.ApplyToAddFriendResp{}
-	if err := authverify.CheckAccessV3(ctx, req.FromUserID); err != nil {
+func (s *friendServer) ApplyToAddFriend(ctx context.Context, req *relation.ApplyToAddFriendReq) (resp *relation.ApplyToAddFriendResp, err error) {
+	resp = &relation.ApplyToAddFriendResp{}
+	if err := authverify.CheckAccessV3(ctx, req.FromUserID, s.config.Share.IMAdminUserID); err != nil {
 		return nil, err
 	}
 	if req.ToUserID == req.FromUserID {
-		return nil, errs.ErrCanNotAddYourself.Wrap()
+		return nil, servererrs.ErrCanNotAddYourself.WrapMsg("req.ToUserID", req.ToUserID)
 	}
-	if err = CallbackBeforeAddFriend(ctx, req); err != nil && err != errs.ErrCallbackContinue {
+	if err = s.webhookBeforeAddFriend(ctx, &s.config.WebhooksConfig.BeforeAddFriend, req); err != nil && err != servererrs.ErrCallbackContinue {
 		return nil, err
 	}
 	if _, err := s.userRpcClient.GetUsersInfoMap(ctx, []string{req.ToUserID, req.FromUserID}); err != nil {
 		return nil, err
 	}
-	in1, in2, err := s.friendDatabase.CheckIn(ctx, req.FromUserID, req.ToUserID)
+
+	in1, in2, err := s.db.CheckIn(ctx, req.FromUserID, req.ToUserID)
 	if err != nil {
 		return nil, err
 	}
 	if in1 && in2 {
-		return nil, errs.ErrRelationshipAlready.Wrap()
+		return nil, servererrs.ErrRelationshipAlready.WrapMsg("already friends has f")
 	}
-	if err = s.friendDatabase.AddFriendRequest(ctx, req.FromUserID, req.ToUserID, req.ReqMsg, req.Ex); err != nil {
+	if err = s.db.AddFriendRequest(ctx, req.FromUserID, req.ToUserID, req.ReqMsg, req.Ex); err != nil {
 		return nil, err
 	}
 	s.notificationSender.FriendApplicationAddNotification(ctx, req)
-	if err = CallbackAfterAddFriend(ctx, req); err != nil && err != errs.ErrCallbackContinue {
-		return nil, err
-	}
+	s.webhookAfterAddFriend(ctx, &s.config.WebhooksConfig.AfterAddFriend, req)
 	return resp, nil
 }
 
 // ok.
-func (s *friendServer) ImportFriends(ctx context.Context, req *pbfriend.ImportFriendReq) (resp *pbfriend.ImportFriendResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	if err := authverify.CheckAdmin(ctx); err != nil {
+func (s *friendServer) ImportFriends(ctx context.Context, req *relation.ImportFriendReq) (resp *relation.ImportFriendResp, err error) {
+	if err := authverify.CheckAdmin(ctx, s.config.Share.IMAdminUserID); err != nil {
 		return nil, err
 	}
 	if _, err := s.userRpcClient.GetUsersInfo(ctx, append([]string{req.OwnerUserID}, req.FriendUserIDs...)); err != nil {
 		return nil, err
 	}
-	if utils.Contain(req.OwnerUserID, req.FriendUserIDs...) {
-		return nil, errs.ErrCanNotAddYourself.Wrap()
+	if datautil.Contain(req.OwnerUserID, req.FriendUserIDs...) {
+		return nil, servererrs.ErrCanNotAddYourself.WrapMsg("can not add yourself")
 	}
-	if utils.Duplicate(req.FriendUserIDs) {
-		return nil, errs.ErrArgs.Wrap("friend userID repeated")
+	if datautil.Duplicate(req.FriendUserIDs) {
+		return nil, errs.ErrArgs.WrapMsg("friend userID repeated")
 	}
-	if err := CallbackBeforeImportFriends(ctx, req); err != nil {
+
+	if err := s.webhookBeforeImportFriends(ctx, &s.config.WebhooksConfig.BeforeImportFriends, req); err != nil && err != servererrs.ErrCallbackContinue {
 		return nil, err
 	}
 
-	if err := s.friendDatabase.BecomeFriends(ctx, req.OwnerUserID, req.FriendUserIDs, constant.BecomeFriendByImport); err != nil {
+	if err := s.db.BecomeFriends(ctx, req.OwnerUserID, req.FriendUserIDs, constant.BecomeFriendByImport); err != nil {
 		return nil, err
 	}
 	for _, userID := range req.FriendUserIDs {
-		s.notificationSender.FriendApplicationAgreedNotification(ctx, &pbfriend.RespondFriendApplyReq{
+		s.notificationSender.FriendApplicationAgreedNotification(ctx, &relation.RespondFriendApplyReq{
 			FromUserID:   req.OwnerUserID,
 			ToUserID:     userID,
 			HandleResult: constant.FriendResponseAgree,
 		})
 	}
-	if err := CallbackAfterImportFriends(ctx, req); err != nil {
-		return nil, err
-	}
-	return &pbfriend.ImportFriendResp{}, nil
+
+	s.webhookAfterImportFriends(ctx, &s.config.WebhooksConfig.AfterImportFriends, req)
+	return &relation.ImportFriendResp{}, nil
 }
 
 // ok.
-func (s *friendServer) RespondFriendApply(ctx context.Context, req *pbfriend.RespondFriendApplyReq) (resp *pbfriend.RespondFriendApplyResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.RespondFriendApplyResp{}
-	if err := authverify.CheckAccessV3(ctx, req.ToUserID); err != nil {
+func (s *friendServer) RespondFriendApply(ctx context.Context, req *relation.RespondFriendApplyReq) (resp *relation.RespondFriendApplyResp, err error) {
+	resp = &relation.RespondFriendApplyResp{}
+	if err := authverify.CheckAccessV3(ctx, req.ToUserID, s.config.Share.IMAdminUserID); err != nil {
 		return nil, err
 	}
 
-	friendRequest := tablerelation.FriendRequestModel{
+	friendRequest := model.FriendRequest{
 		FromUserID:   req.FromUserID,
 		ToUserID:     req.ToUserID,
 		HandleMsg:    req.HandleMsg,
 		HandleResult: req.HandleResult,
 	}
 	if req.HandleResult == constant.FriendResponseAgree {
-		if err := CallbackBeforeAddFriendAgree(ctx, req); err != nil && err != errs.ErrCallbackContinue {
+		if err := s.webhookBeforeAddFriendAgree(ctx, &s.config.WebhooksConfig.BeforeAddFriendAgree, req); err != nil && err != servererrs.ErrCallbackContinue {
 			return nil, err
 		}
-		err := s.friendDatabase.AgreeFriendRequest(ctx, &friendRequest)
+		err := s.db.AgreeFriendRequest(ctx, &friendRequest)
 		if err != nil {
 			return nil, err
 		}
@@ -204,86 +213,90 @@ func (s *friendServer) RespondFriendApply(ctx context.Context, req *pbfriend.Res
 		return resp, nil
 	}
 	if req.HandleResult == constant.FriendResponseRefuse {
-		err := s.friendDatabase.RefuseFriendRequest(ctx, &friendRequest)
+		err := s.db.RefuseFriendRequest(ctx, &friendRequest)
 		if err != nil {
 			return nil, err
 		}
 		s.notificationSender.FriendApplicationRefusedNotification(ctx, req)
 		return resp, nil
 	}
-	return nil, errs.ErrArgs.Wrap("req.HandleResult != -1/1")
+	return nil, errs.ErrArgs.WrapMsg("req.HandleResult != -1/1")
 }
 
 // ok.
-func (s *friendServer) DeleteFriend(ctx context.Context, req *pbfriend.DeleteFriendReq) (resp *pbfriend.DeleteFriendResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.DeleteFriendResp{}
+func (s *friendServer) DeleteFriend(ctx context.Context, req *relation.DeleteFriendReq) (resp *relation.DeleteFriendResp, err error) {
+	resp = &relation.DeleteFriendResp{}
 	if err := s.userRpcClient.Access(ctx, req.OwnerUserID); err != nil {
 		return nil, err
 	}
-	_, err = s.friendDatabase.FindFriendsWithError(ctx, req.OwnerUserID, []string{req.FriendUserID})
+	_, err = s.db.FindFriendsWithError(ctx, req.OwnerUserID, []string{req.FriendUserID})
 	if err != nil {
 		return nil, err
 	}
-	if err := s.friendDatabase.Delete(ctx, req.OwnerUserID, []string{req.FriendUserID}); err != nil {
+	if err := s.db.Delete(ctx, req.OwnerUserID, []string{req.FriendUserID}); err != nil {
 		return nil, err
 	}
 	s.notificationSender.FriendDeletedNotification(ctx, req)
-	if err := CallbackAfterDeleteFriend(ctx, req); err != nil {
-		return nil, err
-	}
+	s.webhookAfterDeleteFriend(ctx, &s.config.WebhooksConfig.AfterDeleteFriend, req)
 	return resp, nil
 }
 
 // ok.
-func (s *friendServer) SetFriendRemark(ctx context.Context, req *pbfriend.SetFriendRemarkReq) (resp *pbfriend.SetFriendRemarkResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-
-	if err = CallbackBeforeSetFriendRemark(ctx, req); err != nil && err != errs.ErrCallbackContinue {
+func (s *friendServer) SetFriendRemark(ctx context.Context, req *relation.SetFriendRemarkReq) (resp *relation.SetFriendRemarkResp, err error) {
+	if err = s.webhookBeforeSetFriendRemark(ctx, &s.config.WebhooksConfig.BeforeSetFriendRemark, req); err != nil && err != servererrs.ErrCallbackContinue {
 		return nil, err
 	}
-	resp = &pbfriend.SetFriendRemarkResp{}
+	resp = &relation.SetFriendRemarkResp{}
 	if err := s.userRpcClient.Access(ctx, req.OwnerUserID); err != nil {
 		return nil, err
 	}
-	_, err = s.friendDatabase.FindFriendsWithError(ctx, req.OwnerUserID, []string{req.FriendUserID})
+	_, err = s.db.FindFriendsWithError(ctx, req.OwnerUserID, []string{req.FriendUserID})
 	if err != nil {
 		return nil, err
 	}
-	if err := s.friendDatabase.UpdateRemark(ctx, req.OwnerUserID, req.FriendUserID, req.Remark); err != nil {
+	if err := s.db.UpdateRemark(ctx, req.OwnerUserID, req.FriendUserID, req.Remark); err != nil {
 		return nil, err
 	}
-	if err := CallbackAfterSetFriendRemark(ctx, req); err != nil && err != errs.ErrCallbackContinue {
-		return nil, err
-	}
+	s.webhookAfterSetFriendRemark(ctx, &s.config.WebhooksConfig.AfterSetFriendRemark, req)
 	s.notificationSender.FriendRemarkSetNotification(ctx, req.OwnerUserID, req.FriendUserID)
 	return resp, nil
 }
 
 // ok.
-func (s *friendServer) GetDesignatedFriends(ctx context.Context, req *pbfriend.GetDesignatedFriendsReq) (resp *pbfriend.GetDesignatedFriendsResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.GetDesignatedFriendsResp{}
-	if utils.Duplicate(req.FriendUserIDs) {
-		return nil, errs.ErrArgs.Wrap("friend userID repeated")
+func (s *friendServer) GetDesignatedFriends(ctx context.Context, req *relation.GetDesignatedFriendsReq) (resp *relation.GetDesignatedFriendsResp, err error) {
+	resp = &relation.GetDesignatedFriendsResp{}
+	if datautil.Duplicate(req.FriendUserIDs) {
+		return nil, errs.ErrArgs.WrapMsg("friend userID repeated")
 	}
-	friends, err := s.friendDatabase.FindFriendsWithError(ctx, req.OwnerUserID, req.FriendUserIDs)
+	friends, err := s.getFriend(ctx, req.OwnerUserID, req.FriendUserIDs)
 	if err != nil {
 		return nil, err
 	}
-	if resp.FriendsInfo, err = convert.FriendsDB2Pb(ctx, friends, s.userRpcClient.GetUsersInfoMap); err != nil {
-		return nil, err
-	}
-	return resp, nil
+	return &relation.GetDesignatedFriendsResp{
+		FriendsInfo: friends,
+	}, nil
 }
 
-func (s *friendServer) GetDesignatedFriendsApply(ctx context.Context,
-	req *pbfriend.GetDesignatedFriendsApplyReq) (resp *pbfriend.GetDesignatedFriendsApplyResp, err error) {
-	friendRequests, err := s.friendDatabase.FindBothFriendRequests(ctx, req.FromUserID, req.ToUserID)
+func (s *friendServer) getFriend(ctx context.Context, ownerUserID string, friendUserIDs []string) ([]*sdkws.FriendInfo, error) {
+	if len(friendUserIDs) == 0 {
+		return nil, nil
+	}
+	friends, err := s.db.FindFriendsWithError(ctx, ownerUserID, friendUserIDs)
 	if err != nil {
 		return nil, err
 	}
-	resp = &pbfriend.GetDesignatedFriendsApplyResp{}
+	return convert.FriendsDB2Pb(ctx, friends, s.userRpcClient.GetUsersInfoMap)
+}
+
+// Get the list of friend requests sent out proactively.
+func (s *friendServer) GetDesignatedFriendsApply(ctx context.Context,
+	req *relation.GetDesignatedFriendsApplyReq,
+) (resp *relation.GetDesignatedFriendsApplyResp, err error) {
+	friendRequests, err := s.db.FindBothFriendRequests(ctx, req.FromUserID, req.ToUserID)
+	if err != nil {
+		return nil, err
+	}
+	resp = &relation.GetDesignatedFriendsApplyResp{}
 	resp.FriendRequests, err = convert.FriendRequestDB2Pb(ctx, friendRequests, s.userRpcClient.GetUsersInfoMap)
 	if err != nil {
 		return nil, err
@@ -291,17 +304,16 @@ func (s *friendServer) GetDesignatedFriendsApply(ctx context.Context,
 	return resp, nil
 }
 
-// ok 获取接收到的好友申请（即别人主动申请的）.
-func (s *friendServer) GetPaginationFriendsApplyTo(ctx context.Context, req *pbfriend.GetPaginationFriendsApplyToReq) (resp *pbfriend.GetPaginationFriendsApplyToResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
+// Get received friend requests (i.e., those initiated by others).
+func (s *friendServer) GetPaginationFriendsApplyTo(ctx context.Context, req *relation.GetPaginationFriendsApplyToReq) (resp *relation.GetPaginationFriendsApplyToResp, err error) {
 	if err := s.userRpcClient.Access(ctx, req.UserID); err != nil {
 		return nil, err
 	}
-	total, friendRequests, err := s.friendDatabase.PageFriendRequestToMe(ctx, req.UserID, req.Pagination)
+	total, friendRequests, err := s.db.PageFriendRequestToMe(ctx, req.UserID, req.Pagination)
 	if err != nil {
 		return nil, err
 	}
-	resp = &pbfriend.GetPaginationFriendsApplyToResp{}
+	resp = &relation.GetPaginationFriendsApplyToResp{}
 	resp.FriendRequests, err = convert.FriendRequestDB2Pb(ctx, friendRequests, s.userRpcClient.GetUsersInfoMap)
 	if err != nil {
 		return nil, err
@@ -310,14 +322,12 @@ func (s *friendServer) GetPaginationFriendsApplyTo(ctx context.Context, req *pbf
 	return resp, nil
 }
 
-// ok 获取主动发出去的好友申请列表.
-func (s *friendServer) GetPaginationFriendsApplyFrom(ctx context.Context, req *pbfriend.GetPaginationFriendsApplyFromReq) (resp *pbfriend.GetPaginationFriendsApplyFromResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.GetPaginationFriendsApplyFromResp{}
+func (s *friendServer) GetPaginationFriendsApplyFrom(ctx context.Context, req *relation.GetPaginationFriendsApplyFromReq) (resp *relation.GetPaginationFriendsApplyFromResp, err error) {
+	resp = &relation.GetPaginationFriendsApplyFromResp{}
 	if err := s.userRpcClient.Access(ctx, req.UserID); err != nil {
 		return nil, err
 	}
-	total, friendRequests, err := s.friendDatabase.PageFriendRequestFromMe(ctx, req.UserID, req.Pagination)
+	total, friendRequests, err := s.db.PageFriendRequestFromMe(ctx, req.UserID, req.Pagination)
 	if err != nil {
 		return nil, err
 	}
@@ -330,26 +340,24 @@ func (s *friendServer) GetPaginationFriendsApplyFrom(ctx context.Context, req *p
 }
 
 // ok.
-func (s *friendServer) IsFriend(ctx context.Context, req *pbfriend.IsFriendReq) (resp *pbfriend.IsFriendResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
-	resp = &pbfriend.IsFriendResp{}
-	resp.InUser1Friends, resp.InUser2Friends, err = s.friendDatabase.CheckIn(ctx, req.UserID1, req.UserID2)
+func (s *friendServer) IsFriend(ctx context.Context, req *relation.IsFriendReq) (resp *relation.IsFriendResp, err error) {
+	resp = &relation.IsFriendResp{}
+	resp.InUser1Friends, resp.InUser2Friends, err = s.db.CheckIn(ctx, req.UserID1, req.UserID2)
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (s *friendServer) GetPaginationFriends(ctx context.Context, req *pbfriend.GetPaginationFriendsReq) (resp *pbfriend.GetPaginationFriendsResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
+func (s *friendServer) GetPaginationFriends(ctx context.Context, req *relation.GetPaginationFriendsReq) (resp *relation.GetPaginationFriendsResp, err error) {
 	if err := s.userRpcClient.Access(ctx, req.UserID); err != nil {
 		return nil, err
 	}
-	total, friends, err := s.friendDatabase.PageOwnerFriends(ctx, req.UserID, req.Pagination)
+	total, friends, err := s.db.PageOwnerFriends(ctx, req.UserID, req.Pagination)
 	if err != nil {
 		return nil, err
 	}
-	resp = &pbfriend.GetPaginationFriendsResp{}
+	resp = &relation.GetPaginationFriendsResp{}
 	resp.FriendsInfo, err = convert.FriendsDB2Pb(ctx, friends, s.userRpcClient.GetUsersInfoMap)
 	if err != nil {
 		return nil, err
@@ -358,31 +366,30 @@ func (s *friendServer) GetPaginationFriends(ctx context.Context, req *pbfriend.G
 	return resp, nil
 }
 
-func (s *friendServer) GetFriendIDs(ctx context.Context, req *pbfriend.GetFriendIDsReq) (resp *pbfriend.GetFriendIDsResp, err error) {
-	defer log.ZInfo(ctx, utils.GetFuncName()+" Return")
+func (s *friendServer) GetFriendIDs(ctx context.Context, req *relation.GetFriendIDsReq) (resp *relation.GetFriendIDsResp, err error) {
 	if err := s.userRpcClient.Access(ctx, req.UserID); err != nil {
 		return nil, err
 	}
-	resp = &pbfriend.GetFriendIDsResp{}
-	resp.FriendIDs, err = s.friendDatabase.FindFriendUserIDs(ctx, req.UserID)
+	resp = &relation.GetFriendIDsResp{}
+	resp.FriendIDs, err = s.db.FindFriendUserIDs(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *pbfriend.GetSpecifiedFriendsInfoReq) (*pbfriend.GetSpecifiedFriendsInfoResp, error) {
+func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *relation.GetSpecifiedFriendsInfoReq) (*relation.GetSpecifiedFriendsInfoResp, error) {
 	if len(req.UserIDList) == 0 {
-		return nil, errs.ErrArgs.Wrap("userIDList is empty")
+		return nil, errs.ErrArgs.WrapMsg("userIDList is empty")
 	}
-	if utils.Duplicate(req.UserIDList) {
-		return nil, errs.ErrArgs.Wrap("userIDList repeated")
+	if datautil.Duplicate(req.UserIDList) {
+		return nil, errs.ErrArgs.WrapMsg("userIDList repeated")
 	}
 	userMap, err := s.userRpcClient.GetUsersInfoMap(ctx, req.UserIDList)
 	if err != nil {
 		return nil, err
 	}
-	friends, err := s.friendDatabase.FindFriendsWithError(ctx, req.OwnerUserID, req.UserIDList)
+	friends, err := s.db.FindFriendsWithError(ctx, req.OwnerUserID, req.UserIDList)
 	if err != nil {
 		return nil, err
 	}
@@ -390,14 +397,14 @@ func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *pbfrien
 	if err != nil {
 		return nil, err
 	}
-	friendMap := utils.SliceToMap(friends, func(e *tablerelation.FriendModel) string {
+	friendMap := datautil.SliceToMap(friends, func(e *model.Friend) string {
 		return e.FriendUserID
 	})
-	blackMap := utils.SliceToMap(blacks, func(e *tablerelation.BlackModel) string {
+	blackMap := datautil.SliceToMap(blacks, func(e *model.Black) string {
 		return e.BlockUserID
 	})
-	resp := &pbfriend.GetSpecifiedFriendsInfoResp{
-		Infos: make([]*pbfriend.GetSpecifiedFriendsInfoInfo, 0, len(req.UserIDList)),
+	resp := &relation.GetSpecifiedFriendsInfoResp{
+		Infos: make([]*relation.GetSpecifiedFriendsInfoInfo, 0, len(req.UserIDList)),
 	}
 	for _, userID := range req.UserIDList {
 		user := userMap[userID]
@@ -406,7 +413,6 @@ func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *pbfrien
 		}
 		var friendInfo *sdkws.FriendInfo
 		if friend := friendMap[userID]; friend != nil {
-
 			friendInfo = &sdkws.FriendInfo{
 				OwnerUserID:    friend.OwnerUserID,
 				Remark:         friend.Remark,
@@ -427,7 +433,7 @@ func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *pbfrien
 				Ex:             black.Ex,
 			}
 		}
-		resp.Infos = append(resp.Infos, &pbfriend.GetSpecifiedFriendsInfoInfo{
+		resp.Infos = append(resp.Infos, &relation.GetSpecifiedFriendsInfoInfo{
 			UserInfo:   user,
 			FriendInfo: friendInfo,
 			BlackInfo:  blackInfo,
@@ -435,18 +441,19 @@ func (s *friendServer) GetSpecifiedFriendsInfo(ctx context.Context, req *pbfrien
 	}
 	return resp, nil
 }
+
 func (s *friendServer) UpdateFriends(
 	ctx context.Context,
-	req *pbfriend.UpdateFriendsReq,
-) (*pbfriend.UpdateFriendsResp, error) {
+	req *relation.UpdateFriendsReq,
+) (*relation.UpdateFriendsResp, error) {
 	if len(req.FriendUserIDs) == 0 {
-		return nil, errs.ErrArgs.Wrap("friendIDList is empty")
+		return nil, errs.ErrArgs.WrapMsg("friendIDList is empty")
 	}
-	if utils.Duplicate(req.FriendUserIDs) {
-		return nil, errs.ErrArgs.Wrap("friendIDList repeated")
+	if datautil.Duplicate(req.FriendUserIDs) {
+		return nil, errs.ErrArgs.WrapMsg("friendIDList repeated")
 	}
 
-	_, err := s.friendDatabase.FindFriendsWithError(ctx, req.OwnerUserID, req.FriendUserIDs)
+	_, err := s.db.FindFriendsWithError(ctx, req.OwnerUserID, req.FriendUserIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -462,15 +469,27 @@ func (s *friendServer) UpdateFriends(
 	if req.Ex != nil {
 		val["ex"] = req.Ex.Value
 	}
-	if err = s.friendDatabase.UpdateFriends(ctx, req.OwnerUserID, req.FriendUserIDs, val); err != nil {
+	if err = s.db.UpdateFriends(ctx, req.OwnerUserID, req.FriendUserIDs, val); err != nil {
 		return nil, err
 	}
 
-	resp := &pbfriend.UpdateFriendsResp{}
+	resp := &relation.UpdateFriendsResp{}
 
-	err = s.notificationSender.FriendsInfoUpdateNotification(ctx, req.OwnerUserID, req.FriendUserIDs)
-	if err != nil {
-		return nil, errs.Wrap(err, "FriendsInfoUpdateNotification Error")
-	}
+	s.notificationSender.FriendsInfoUpdateNotification(ctx, req.OwnerUserID, req.FriendUserIDs)
 	return resp, nil
+}
+
+func (s *friendServer) GetIncrementalFriendsApplyTo(ctx context.Context, req *relation.GetIncrementalFriendsApplyToReq) (*relation.GetIncrementalFriendsApplyToResp, error) {
+	// TODO implement me
+	return nil, nil
+}
+
+func (s *friendServer) GetIncrementalFriendsApplyFrom(ctx context.Context, req *relation.GetIncrementalFriendsApplyFromReq) (*relation.GetIncrementalFriendsApplyFromResp, error) {
+	// TODO implement me
+	return nil, nil
+}
+
+func (s *friendServer) GetIncrementalBlacks(ctx context.Context, req *relation.GetIncrementalBlacksReq) (*relation.GetIncrementalBlacksResp, error) {
+	// TODO implement me
+	return nil, nil
 }

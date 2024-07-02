@@ -38,6 +38,8 @@ func main() {
 	// }
 	latestVersion := defaultTemplateVersion
 
+	// getLatestVersion
+
 	// Construct the download URL
 	downloadURL := fmt.Sprintf("https://github.com/openimsdk/chat/releases/download/%s/chat_Linux_x86_64.tar.gz", latestVersion)
 
@@ -98,23 +100,22 @@ func main() {
 	select {}
 }
 
-// getLatestVersion fetches the latest version number from a given URL.
-func getLatestVersion(url string) (string, error) {
-	resp, err := http.Get(url)
+/* func getLatestVersion(url string) (string, error) {
+	resp, err := webhook.Get(url)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	location := resp.Header.Get("Location")
-	if location == "" {
-		return defaultTemplateVersion, nil
-	}
+// 	location := resp.Header.Get("Location")
+// 	if location == "" {
+// 		return defaultTemplateVersion, nil
+// 	}
 
 	// Extract the version number from the URL
 	latestVersion := filepath.Base(location)
 	return latestVersion, nil
-}
+} */
 
 // downloadAndExtract downloads a file from a URL and extracts it to a destination directory.
 func downloadAndExtract(url, destDir string) error {

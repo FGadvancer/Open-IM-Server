@@ -19,7 +19,7 @@ import (
 	"github.com/openimsdk/open-im-server/v3/internal/push/offlinepush/options"
 )
 
-func NewDummy() *Dummy {
+func NewClient() *Dummy {
 	return &Dummy{}
 }
 
