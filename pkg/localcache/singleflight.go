@@ -2,7 +2,7 @@ package localcache
 
 import "sync"
 
-type call[K comparable, V any] struct {
+type call[V any] struct {
 	wg  sync.WaitGroup
 	val V
 	err error
@@ -10,24 +10,24 @@ type call[K comparable, V any] struct {
 
 type SingleFlight[K comparable, V any] struct {
 	mu sync.Mutex
-	m  map[K]*call[K, V]
+	m  map[K]*call[V]
 }
 
 func NewSingleFlight[K comparable, V any]() *SingleFlight[K, V] {
-	return &SingleFlight[K, V]{m: make(map[K]*call[K, V])}
+	return &SingleFlight[K, V]{m: make(map[K]*call[V])}
 }
 
 func (r *SingleFlight[K, V]) Do(key K, fn func() (V, error)) (V, error) {
 	r.mu.Lock()
 	if r.m == nil {
-		r.m = make(map[K]*call[K, V])
+		r.m = make(map[K]*call[V])
 	}
 	if c, ok := r.m[key]; ok {
 		r.mu.Unlock()
 		c.wg.Wait()
 		return c.val, c.err
 	}
-	c := new(call[K, V])
+	c := new(call[V])
 	c.wg.Add(1)
 	r.m[key] = c
 	r.mu.Unlock()
